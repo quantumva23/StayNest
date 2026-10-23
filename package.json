@@ -1,0 +1,32 @@
+{
+  "name": "staynest-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "StayNest — Full-Stack Accommodation Booking Platform",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev:server": "npm --workspace=server run dev",
+    "dev:client": "npm --workspace=client run dev",
+    "dev": "npm run dev:server",
+    "build:server": "npm --workspace=server run build",
+    "build:client": "npm --workspace=client run build",
+    "build": "npm run build:server && npm run build:client",
+    "test:server": "npm --workspace=server run test",
+    "test": "npm run test:server"
+  },
+  "keywords": [
+    "booking",
+    "hotel",
+    "reservation",
+    "airbnb-clone",
+    "full-stack",
+    "express",
+    "react",
+    "prisma"
+  ],
+  "author": "",
+  "license": "ISC"
+}

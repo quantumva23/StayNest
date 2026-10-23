@@ -1,0 +1,198 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  GUEST
+  HOST
+  ADMIN
+}
+
+enum PropertyType {
+  HOTEL
+  LOUNGE
+  GUEST_HOUSE
+}
+
+enum PropertyStatus {
+  DRAFT
+  PENDING_APPROVAL
+  ACTIVE
+  REJECTED
+  INACTIVE
+}
+
+enum BookingStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  CREATED
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+model User {
+  id            String        @id @default(uuid())
+  email         String        @unique
+  name          String
+  passwordHash  String?       @map("password_hash")
+  role          Role          @default(GUEST)
+  isActive      Boolean       @default(true) @map("is_active")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  properties    Property[]    @relation("HostProperties")
+  bookings      Booking[]     @relation("GuestBookings")
+
+  @@map("users")
+}
+
+model Property {
+  id          String            @id @default(uuid())
+  hostId      String            @map("host_id")
+  name        String
+  description String            @db.Text
+  type        PropertyType
+  address     String
+  city        String
+  state       String?
+  country     String            @default("India")
+  latitude    Float?
+  longitude   Float?
+  status      PropertyStatus    @default(ACTIVE)
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  host        User              @relation("HostProperties", fields: [hostId], references: [id], onDelete: Cascade)
+  rooms       Room[]
+  images      PropertyImage[]
+  amenities   PropertyAmenity[]
+
+  @@index([status, city, type])
+  @@index([hostId])
+  @@map("properties")
+}
+
+model Room {
+  id            String    @id @default(uuid())
+  propertyId    String    @map("property_id")
+  name          String
+  description   String?   @db.Text
+  capacity      Int       @default(2)
+  pricePerNight Int       @map("price_per_night") // Stored in minor currency units (paise)
+  currency      String    @default("INR")
+  totalUnits    Int       @default(1) @map("total_units")
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  property      Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  bookings      Booking[]
+
+  @@index([propertyId])
+  @@map("rooms")
+}
+
+model PropertyImage {
+  id          String    @id @default(uuid())
+  propertyId  String    @map("property_id")
+  imageUrl    String    @map("image_url")
+  altText     String?   @map("alt_text")
+  sortOrder   Int       @default(0) @map("sort_order")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  property    Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+  @@map("property_images")
+}
+
+model Amenity {
+  id          String            @id @default(uuid())
+  name        String            @unique
+  iconKey     String?           @map("icon_key")
+  properties  PropertyAmenity[]
+
+  @@map("amenities")
+}
+
+model PropertyAmenity {
+  propertyId  String   @map("property_id")
+  amenityId   String   @map("amenity_id")
+
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  amenity     Amenity  @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, amenityId])
+  @@map("property_amenities")
+}
+
+model Booking {
+  id                String        @id @default(uuid())
+  guestId           String        @map("guest_id")
+  roomId            String        @map("room_id")
+  checkIn           DateTime      @map("check_in")
+  checkOut          DateTime      @map("check_out")
+  guestsCount       Int           @map("guests_count")
+  quantity          Int           @default(1)
+  status            BookingStatus @default(PENDING_PAYMENT)
+  unitPriceSnapshot Int           @map("unit_price_snapshot") // minor units per night
+  subtotal          Int
+  fees              Int           @default(0)
+  totalAmount       Int           @map("total_amount")
+  currency          String        @default("INR")
+  expiresAt         DateTime?     @map("expires_at")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  guest             User          @relation("GuestBookings", fields: [guestId], references: [id], onDelete: Cascade)
+  room              Room          @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  payments          Payment[]
+
+  @@index([roomId, status, checkIn, checkOut])
+  @@index([guestId, createdAt])
+  @@map("bookings")
+}
+
+model Payment {
+  id                String        @id @default(uuid())
+  bookingId         String        @map("booking_id")
+  provider          String        @default("razorpay")
+  providerOrderId   String?       @unique @map("provider_order_id")
+  providerPaymentId String?       @unique @map("provider_payment_id")
+  amount            Int           // minor units (paise)
+  currency          String        @default("INR")
+  status            PaymentStatus @default(CREATED)
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  booking           Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@map("payments")
+}
+
+model PaymentWebhookEvent {
+  id               String    @id @default(uuid())
+  provider         String    @default("razorpay")
+  providerEventId  String    @map("provider_event_id")
+  eventType        String    @map("event_type")
+  processingStatus String    @default("SUCCESS") @map("processing_status")
+  receivedAt       DateTime  @default(now()) @map("received_at")
+  processedAt      DateTime? @map("processed_at")
+  errorDetails     String?   @map("error_details") @db.Text
+
+  @@unique([provider, providerEventId])
+  @@map("payment_webhook_events")
+}
