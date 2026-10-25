@@ -14,6 +14,8 @@ import paymentsRoutes from './modules/payments/payments.routes';
 import hostRoutes from './modules/host/host.routes';
 import adminRoutes from './modules/admin/admin.routes';
 import amenitiesRoutes from './modules/amenities/amenities.routes';
+import citiesRoutes from './modules/cities/cities.routes';
+import uploadsRoutes, { uploadDir } from './modules/uploads/uploads.routes';
 
 export const createApp = () => {
   const app = express();
@@ -45,6 +47,11 @@ export const createApp = () => {
 
   app.use(cookieParser());
 
+  app.use('/uploads', (_req, res, next) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    next();
+  }, express.static(uploadDir));
+
   // Health check endpoint
   app.get('/health', (req, res) => {
     res.status(200).json({
@@ -65,6 +72,8 @@ export const createApp = () => {
   apiRouter.use('/host', hostRoutes);
   apiRouter.use('/admin', adminRoutes);
   apiRouter.use('/amenities', amenitiesRoutes);
+  apiRouter.use('/cities', citiesRoutes);
+  apiRouter.use('/uploads', uploadsRoutes);
 
   app.use('/api/v1', apiRouter);
 

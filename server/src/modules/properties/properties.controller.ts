@@ -1,213 +1,336 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { prisma } from '../../config/database';
+import { Prisma } from '@prisma/client';
+import { prisma, transactionOptions } from '../../config/database';
 import { AppError } from '../../middleware/errorHandler';
-import { Prisma, PropertyStatus, PropertyType } from '@prisma/client';
-
-type PropertyWithDetails = Prisma.PropertyGetPayload<{
-  include: {
-    images: true;
-    rooms: {
-      select: {
-        id: true;
-        name: true;
-        capacity: true;
-        pricePerNight: true;
-        currency: true;
-        totalUnits: true;
-      };
-    };
-    amenities: {
-      include: {
-        amenity: true;
-      };
-    };
-  };
-}>;
+import { overlappingStayWhere } from '../bookings/availability';
+import { createPropertySchema, roomInputSchema, updatePropertySchema } from './listingSchema';
+import { refreshPropertySearchSnapshot } from './searchSnapshot';
+import {
+  paginateIds,
+  priceInRange,
+  propertiesWithAvailability,
+  PROPERTY_TYPE_LABELS,
+  PROPERTY_TYPES,
+  ROOM_TYPE_LABELS,
+  ROOM_TYPES,
+  rupeesToPaise,
+  unknownCityError,
+} from './search';
 
 const listPropertiesSchema = z.object({
   city: z.string().optional(),
-  type: z.enum(['HOTEL', 'LOUNGE', 'GUEST_HOUSE']).optional(),
+  type: z.enum(PROPERTY_TYPES).optional(),
+  roomType: z.enum(ROOM_TYPES).optional(),
   checkIn: z.string().optional(),
   checkOut: z.string().optional(),
-  guests: z.coerce.number().min(1).optional(),
+  guests: z.coerce.number().int().min(1).optional(),
   minPrice: z.coerce.number().min(0).optional(),
   maxPrice: z.coerce.number().min(0).optional(),
-  amenities: z.string().optional(), // comma-separated amenity names or IDs
-  page: z.coerce.number().min(1).default(1),
-  limit: z.coerce.number().min(1).max(50).default(12),
+  amenities: z.string().optional(),
+  sort: z.enum(['newest', 'price_asc', 'price_desc']).default('newest'),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(12),
 });
+
+const cardInclude = {
+  images: {
+    orderBy: { sortOrder: 'asc' as const },
+    take: 1,
+  },
+  rooms: {
+    where: { isActive: true },
+    select: {
+      roomType: true,
+      currency: true,
+      capacity: true,
+      pricePerNight: true,
+    },
+    orderBy: { pricePerNight: 'asc' as const },
+  },
+  amenities: {
+    include: { amenity: true },
+  },
+} satisfies Prisma.PropertyInclude;
+
+type CardProperty = Prisma.PropertyGetPayload<{ include: typeof cardInclude }>;
+
+function toCard(
+  property: CardProperty,
+  query?: { roomType?: string; guests?: number; minPrice?: number; maxPrice?: number }
+) {
+  const matching = property.rooms.filter((room) => {
+    if (query?.roomType && room.roomType !== query.roomType) return false;
+    if (query?.guests && room.capacity < query.guests) return false;
+    if (!priceInRange(room.pricePerNight, query?.minPrice, query?.maxPrice)) return false;
+    return true;
+  });
+  const priced = matching.length > 0 ? matching : property.rooms;
+  const roomTypes = [...new Set((matching.length > 0 ? matching : property.rooms).map((room) => room.roomType))];
+  return {
+    id: property.id,
+    name: property.name,
+    type: property.type,
+    city: property.city,
+    country: property.country,
+    images: property.images.map((image) => ({
+      imageUrl: image.imageUrl,
+      altText: image.altText,
+    })),
+    minPricePerNight: priced.length
+      ? Math.min(...priced.map((room) => room.pricePerNight))
+      : property.minPricePerNight,
+    currency: property.rooms[0]?.currency || 'INR',
+    roomCount: priced.length,
+    roomTypes,
+    amenities: property.amenities.map((link) => link.amenity),
+  };
+}
+
+function emptyPage(page: number, limit: number) {
+  return {
+    properties: [],
+    pagination: { total: 0, page, limit, totalPages: 0 },
+  };
+}
+
+function roomFilter(query: {
+  roomType?: (typeof ROOM_TYPES)[number];
+  guests?: number;
+  minPrice?: number;
+  maxPrice?: number;
+}): Prisma.RoomWhereInput {
+  const where: Prisma.RoomWhereInput = { isActive: true };
+  if (query.roomType) where.roomType = query.roomType;
+  if (query.guests) where.capacity = { gte: query.guests };
+  if (query.minPrice !== undefined || query.maxPrice !== undefined) {
+    where.pricePerNight = {
+      ...(query.minPrice !== undefined ? { gte: rupeesToPaise(query.minPrice) } : {}),
+      ...(query.maxPrice !== undefined ? { lte: rupeesToPaise(query.maxPrice) } : {}),
+    };
+  }
+  return where;
+}
 
 export const getProperties = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const query = listPropertiesSchema.parse(req.query);
-    const { city, type, checkIn, checkOut, guests, minPrice, maxPrice, amenities, page, limit } = query;
-
-    const roomWhere: Prisma.RoomWhereInput = {
-      isActive: true,
-    };
-    if (guests) {
-      roomWhere.capacity = { gte: guests };
-    }
-    if (minPrice !== undefined || maxPrice !== undefined) {
-      roomWhere.pricePerNight = {
-        ...(minPrice !== undefined ? { gte: minPrice } : {}),
-        ...(maxPrice !== undefined ? { lte: maxPrice } : {}),
-      };
-    }
+    const { city, type, guests, amenities, sort, page, limit, checkIn, checkOut } = query;
+    const rooms = roomFilter(query);
 
     const where: Prisma.PropertyWhereInput = {
       status: 'ACTIVE',
+      hasActiveRooms: true,
+      rooms: { some: rooms },
     };
 
-    if (city) {
-      where.city = { contains: city.trim(), mode: 'insensitive' };
+    if (guests) where.maxCapacity = { gte: guests };
+    if (type) where.type = type;
+
+    if (city?.trim()) {
+      const location = await prisma.city.findFirst({
+        where: {
+          OR: [
+            { slug: city.trim().toLowerCase() },
+            { name: { equals: city.trim(), mode: 'insensitive' } },
+          ],
+        },
+      });
+      if (!location) {
+        return res.status(200).json(emptyPage(page, limit));
+      }
+      where.cityId = location.id;
     }
 
-    if (type) {
-      where.type = type;
+    if (amenities?.trim()) {
+      const tokens = amenities.split(',').map((token) => token.trim()).filter(Boolean);
+      const found = await prisma.amenity.findMany({
+        where: {
+          OR: [
+            { id: { in: tokens } },
+            { name: { in: tokens, mode: 'insensitive' } },
+          ],
+        },
+      });
+      if (found.length < tokens.length) {
+        return res.status(200).json(emptyPage(page, limit));
+      }
+      where.AND = found.map((amenity) => ({
+        amenities: { some: { amenityId: amenity.id } },
+      }));
     }
 
-    if (amenities) {
-      const amenityList = amenities.split(',').map((a) => a.trim()).filter(Boolean);
-      if (amenityList.length > 0) {
-        where.amenities = {
-          some: {
-            amenity: {
-              name: { in: amenityList, mode: 'insensitive' },
-            },
-          },
-        };
+    let parsedCheckIn: Date | null = null;
+    let parsedCheckOut: Date | null = null;
+    if (checkIn || checkOut) {
+      if (!checkIn || !checkOut) {
+        return next(new AppError('Choose both a check-in and a check-out date.', 400, 'INVALID_DATE_RANGE'));
+      }
+      parsedCheckIn = new Date(checkIn);
+      parsedCheckOut = new Date(checkOut);
+      if (isNaN(parsedCheckIn.getTime()) || isNaN(parsedCheckOut.getTime())) {
+        return next(new AppError('Use dates in YYYY-MM-DD format.', 400, 'INVALID_DATE'));
+      }
+      if (parsedCheckOut <= parsedCheckIn) {
+        return next(new AppError('Check-out must be after check-in.', 400, 'INVALID_DATE_RANGE'));
       }
     }
 
-    where.rooms = {
-      some: roomWhere,
-    };
+    const orderBy: Prisma.PropertyOrderByWithRelationInput =
+      sort === 'price_asc'
+        ? { minPricePerNight: 'asc' }
+        : sort === 'price_desc'
+          ? { minPricePerNight: 'desc' }
+          : { createdAt: 'desc' };
+
+    if (parsedCheckIn && parsedCheckOut) {
+      const ordered = await prisma.property.findMany({
+        where,
+        orderBy,
+        select: { id: true },
+      });
+      const propertyIds = ordered.map((property) => property.id);
+      const stock = propertyIds.length
+        ? await prisma.room.findMany({
+            where: { propertyId: { in: propertyIds }, ...rooms },
+            select: { id: true, propertyId: true, totalUnits: true, capacity: true },
+          })
+        : [];
+
+      const booked = stock.length
+        ? await prisma.booking.groupBy({
+            by: ['roomId'],
+            where: overlappingStayWhere(
+              { in: stock.map((room) => room.id) },
+              parsedCheckIn,
+              parsedCheckOut,
+              new Date()
+            ),
+            _sum: { quantity: true },
+          })
+        : [];
+
+      const available = propertiesWithAvailability(
+        stock,
+        booked.map((row) => ({ roomId: row.roomId, quantity: row._sum.quantity ?? 0 })),
+        guests
+      );
+      const pageResult = paginateIds(
+        propertyIds.filter((id) => available.has(id)),
+        page,
+        limit
+      );
+
+      const rows = pageResult.items.length
+        ? await prisma.property.findMany({
+            where: { id: { in: pageResult.items } },
+            include: cardInclude,
+          })
+        : [];
+      const byId = new Map(rows.map((row) => [row.id, row]));
+
+      return res.status(200).json({
+        properties: pageResult.items
+          .map((id) => byId.get(id))
+          .filter((row): row is CardProperty => Boolean(row))
+          .map((row) => toCard(row, query)),
+        pagination: {
+          total: pageResult.total,
+          page: pageResult.page,
+          limit: pageResult.limit,
+          totalPages: pageResult.totalPages,
+        },
+      });
+    }
 
     const skip = (page - 1) * limit;
-
-    const [total, properties] = await Promise.all([
+    const [total, rows] = await Promise.all([
       prisma.property.count({ where }),
       prisma.property.findMany({
         where,
         skip,
         take: limit,
-        include: {
-          images: {
-            orderBy: { sortOrder: 'asc' },
-            take: 5,
-          },
-          rooms: {
-            where: { isActive: true },
-            select: {
-              id: true,
-              name: true,
-              capacity: true,
-              pricePerNight: true,
-              currency: true,
-              totalUnits: true,
-            },
-            orderBy: { pricePerNight: 'asc' },
-          },
-          amenities: {
-            include: {
-              amenity: true,
-            },
-          },
-        },
-        orderBy: { createdAt: 'desc' },
+        orderBy,
+        include: cardInclude,
       }),
     ]);
 
-    // If checkIn and checkOut are provided, check date-range availability for each property
-    let parsedCheckIn: Date | null = null;
-    let parsedCheckOut: Date | null = null;
-    if (checkIn && checkOut) {
-      parsedCheckIn = new Date(checkIn);
-      parsedCheckOut = new Date(checkOut);
-
-      if (isNaN(parsedCheckIn.getTime()) || isNaN(parsedCheckOut.getTime())) {
-        return next(new AppError('Invalid date format. Use YYYY-MM-DD.', 400, 'INVALID_DATE'));
-      }
-      if (parsedCheckOut <= parsedCheckIn) {
-        return next(new AppError('Check-out date must be strictly after check-in date.', 400, 'INVALID_DATE_RANGE'));
-      }
-    }
-
-    let results = properties.map((prop: PropertyWithDetails) => {
-      const minRoomPrice = prop.rooms.length > 0
-        ? Math.min(...prop.rooms.map((r) => r.pricePerNight))
-        : 0;
-
-      return {
-        id: prop.id,
-        name: prop.name,
-        description: prop.description,
-        type: prop.type,
-        address: prop.address,
-        city: prop.city,
-        state: prop.state,
-        country: prop.country,
-        status: prop.status,
-        images: prop.images,
-        amenities: prop.amenities.map((pa) => pa.amenity),
-        minPricePerNight: minRoomPrice,
-        currency: prop.rooms[0]?.currency || 'INR',
-        roomCount: prop.rooms.length,
-        rooms: prop.rooms,
-      };
-    });
-
-    // If date filters applied, filter out properties with no available rooms for the dates
-    if (parsedCheckIn && parsedCheckOut) {
-      const now = new Date();
-      const filteredResults = [];
-
-      for (const prop of results) {
-        let hasAvailableRoom = false;
-        for (const room of prop.rooms) {
-          // Count active overlapping bookings
-          const overlappingBookings = await prisma.booking.findMany({
-            where: {
-              roomId: room.id,
-              checkIn: { lt: parsedCheckOut },
-              checkOut: { gt: parsedCheckIn },
-              OR: [
-                { status: 'CONFIRMED' },
-                {
-                  status: 'PENDING_PAYMENT',
-                  expiresAt: { gt: now },
-                },
-              ],
-            },
-            select: { quantity: true },
-          });
-
-          const bookedUnits = overlappingBookings.reduce((sum: number, b) => sum + b.quantity, 0);
-          const availableUnits = room.totalUnits - bookedUnits;
-          if (availableUnits > 0 && (!guests || room.capacity >= guests)) {
-            hasAvailableRoom = true;
-            break;
-          }
-        }
-
-        if (hasAvailableRoom) {
-          filteredResults.push(prop);
-        }
-      }
-      results = filteredResults;
-    }
-
     return res.status(200).json({
-      properties: results,
+      properties: rows.map((row) => toCard(row, query)),
       pagination: {
         total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit),
+        totalPages: total === 0 ? 0 : Math.ceil(total / limit),
       },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getCatalog = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const active = { status: 'ACTIVE' as const, hasActiveRooms: true };
+    const [typeGroups, cityGroups, roomRows, cities] = await Promise.all([
+      prisma.property.groupBy({
+        by: ['type'],
+        where: active,
+        _count: { _all: true },
+      }),
+      prisma.property.groupBy({
+        by: ['cityId'],
+        where: active,
+        _count: { _all: true },
+      }),
+      prisma.room.findMany({
+        where: { isActive: true, property: active },
+        select: { roomType: true, propertyId: true },
+      }),
+      prisma.city.findMany({ orderBy: { name: 'asc' } }),
+    ]);
+
+    const typeCount = new Map(typeGroups.map((group) => [group.type, group._count._all]));
+    const cityCount = new Map(cityGroups.map((group) => [group.cityId, group._count._all]));
+    const roomProperties = new Map<string, Set<string>>();
+    for (const row of roomRows) {
+      const set = roomProperties.get(row.roomType) ?? new Set<string>();
+      set.add(row.propertyId);
+      roomProperties.set(row.roomType, set);
+    }
+
+    return res.status(200).json({
+      propertyTypes: PROPERTY_TYPES.map((id) => ({
+        id,
+        label: PROPERTY_TYPE_LABELS[id],
+        count: typeCount.get(id) ?? 0,
+      })),
+      roomTypes: ROOM_TYPES.map((id) => ({
+        id,
+        label: ROOM_TYPE_LABELS[id],
+        count: roomProperties.get(id)?.size ?? 0,
+      })),
+      cities: cities.map((city) => ({
+        id: city.id,
+        name: city.name,
+        slug: city.slug,
+        state: city.state,
+        country: city.country,
+        count: cityCount.get(city.id) ?? 0,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getCities = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const cities = await prisma.city.findMany({
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, slug: true, state: true, country: true },
+    });
+    return res.status(200).json({ cities });
   } catch (error) {
     next(error);
   }
@@ -220,25 +343,13 @@ export const getPropertyById = async (req: Request, res: Response, next: NextFun
     const property = await prisma.property.findUnique({
       where: { id: propertyId },
       include: {
-        images: {
-          orderBy: { sortOrder: 'asc' },
-        },
+        images: { orderBy: { sortOrder: 'asc' } },
         rooms: {
           where: { isActive: true },
           orderBy: { pricePerNight: 'asc' },
         },
-        amenities: {
-          include: {
-            amenity: true,
-          },
-        },
-        host: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
+        amenities: { include: { amenity: true } },
+        host: { select: { id: true, name: true } },
       },
     });
 
@@ -246,17 +357,16 @@ export const getPropertyById = async (req: Request, res: Response, next: NextFun
       return next(new AppError('Property not found.', 404, 'PROPERTY_NOT_FOUND'));
     }
 
-    // If property is not ACTIVE, only host or admin can view
     if (property.status !== 'ACTIVE') {
       if (!req.user || (req.user.role !== 'ADMIN' && req.user.id !== property.hostId)) {
-        return next(new AppError('Property listing is currently not public.', 404, 'PROPERTY_NOT_FOUND'));
+        return next(new AppError('This listing is not public.', 404, 'PROPERTY_NOT_FOUND'));
       }
     }
 
     return res.status(200).json({
       property: {
         ...property,
-        amenities: property.amenities.map((pa) => pa.amenity),
+        amenities: property.amenities.map((link) => link.amenity),
       },
     });
   } catch (error) {
@@ -264,68 +374,92 @@ export const getPropertyById = async (req: Request, res: Response, next: NextFun
   }
 };
 
-const createPropertySchema = z.object({
-  name: z.string().min(3).max(150),
-  description: z.string().min(10),
-  type: z.enum(['HOTEL', 'LOUNGE', 'GUEST_HOUSE']),
-  address: z.string().min(3),
-  city: z.string().min(2),
-  state: z.string().optional(),
-  country: z.string().default('India'),
-  latitude: z.number().optional(),
-  longitude: z.number().optional(),
-  amenityIds: z.array(z.string()).optional(),
-  images: z.array(z.object({
-    imageUrl: z.string().url(),
-    altText: z.string().optional(),
-    sortOrder: z.number().default(0),
-  })).optional(),
-});
+async function requireCity(slug: string) {
+  const location = await prisma.city.findUnique({ where: { slug } });
+  if (!location) {
+    const cities = await prisma.city.findMany({
+      orderBy: { name: 'asc' },
+      select: { name: true, slug: true },
+    });
+    const unknown = unknownCityError(cities);
+    throw new AppError(unknown.message, unknown.statusCode, unknown.code, unknown.details);
+  }
+  return location;
+}
 
 export const createProperty = async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.user) {
-      return next(new AppError('Authentication required.', 401, 'UNAUTHENTICATED'));
+      return next(new AppError('Sign in to publish a listing.', 401, 'UNAUTHENTICATED'));
     }
 
     const data = createPropertySchema.parse(req.body);
+    const location = await requireCity(data.citySlug);
 
-    const property = await prisma.property.create({
-      data: {
-        hostId: req.user.id,
-        name: data.name,
-        description: data.description,
-        type: data.type,
-        address: data.address,
-        city: data.city,
-        state: data.state,
-        country: data.country,
-        latitude: data.latitude,
-        longitude: data.longitude,
-        status: 'ACTIVE', // Active for demo, or PENDING_APPROVAL
-        images: data.images?.length
-          ? {
-              create: data.images.map((img) => ({
-                imageUrl: img.imageUrl,
-                altText: img.altText,
-                sortOrder: img.sortOrder,
-              })),
-            }
-          : undefined,
-        amenities: data.amenityIds?.length
-          ? {
-              create: data.amenityIds.map((id) => ({
-                amenity: { connect: { id } },
-              })),
-            }
-          : undefined,
-      },
-      include: {
-        images: true,
-        rooms: true,
-        amenities: { include: { amenity: true } },
-      },
-    });
+    if (data.amenityIds?.length) {
+      const found = await prisma.amenity.count({ where: { id: { in: data.amenityIds } } });
+      if (found !== new Set(data.amenityIds).size) {
+        return next(new AppError('A selected amenity is no longer available.', 400, 'INVALID_REFERENCE'));
+      }
+    }
+
+    const property = await prisma.$transaction(async (tx) => {
+      const created = await tx.property.create({
+        data: {
+          hostId: req.user!.id,
+          name: data.name,
+          description: data.description,
+          type: data.type,
+          address: data.address,
+          city: location.name,
+          cityId: location.id,
+          state: data.state ?? location.state,
+          country: location.country || data.country,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          status: 'PENDING_APPROVAL',
+          images: data.images?.length
+            ? {
+                create: data.images.map((image) => ({
+                  imageUrl: image.imageUrl,
+                  altText: image.altText,
+                  sortOrder: image.sortOrder,
+                })),
+              }
+            : undefined,
+          amenities: data.amenityIds?.length
+            ? {
+                create: data.amenityIds.map((id) => ({
+                  amenity: { connect: { id } },
+                })),
+              }
+            : undefined,
+          rooms: {
+            create: data.rooms.map((room) => ({
+              name: room.name,
+              description: room.description,
+              roomType: room.roomType,
+              capacity: room.capacity,
+              pricePerNight: rupeesToPaise(room.nightlyPrice),
+              currency: room.currency,
+              totalUnits: room.totalUnits,
+              isActive: true,
+            })),
+          },
+        },
+      });
+
+      await refreshPropertySearchSnapshot(tx, created.id);
+
+      return tx.property.findUniqueOrThrow({
+        where: { id: created.id },
+        include: {
+          images: true,
+          rooms: true,
+          amenities: { include: { amenity: true } },
+        },
+      });
+    }, transactionOptions);
 
     return res.status(201).json({ property });
   } catch (error) {
@@ -336,26 +470,20 @@ export const createProperty = async (req: Request, res: Response, next: NextFunc
 export const updateProperty = async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.user) {
-      return next(new AppError('Authentication required.', 401, 'UNAUTHENTICATED'));
+      return next(new AppError('Sign in to edit a listing.', 401, 'UNAUTHENTICATED'));
     }
 
     const { propertyId } = req.params;
-
-    const existing = await prisma.property.findUnique({
-      where: { id: propertyId },
-    });
-
+    const existing = await prisma.property.findUnique({ where: { id: propertyId } });
     if (!existing) {
       return next(new AppError('Property not found.', 404, 'PROPERTY_NOT_FOUND'));
     }
-
-    // Check ownership
     if (req.user.role !== 'ADMIN' && existing.hostId !== req.user.id) {
-      return next(new AppError('You do not have permission to edit this property.', 403, 'FORBIDDEN'));
+      return next(new AppError('You can only edit your own listing.', 403, 'FORBIDDEN'));
     }
 
-    const updateSchema = createPropertySchema.partial();
-    const data = updateSchema.parse(req.body);
+    const data = updatePropertySchema.parse(req.body);
+    const location = data.citySlug ? await requireCity(data.citySlug) : null;
 
     const updated = await prisma.property.update({
       where: { id: propertyId },
@@ -364,9 +492,10 @@ export const updateProperty = async (req: Request, res: Response, next: NextFunc
         description: data.description,
         type: data.type,
         address: data.address,
-        city: data.city,
-        state: data.state,
-        country: data.country,
+        city: location?.name,
+        cityId: location?.id,
+        state: location ? (data.state ?? location.state) : data.state,
+        country: location ? location.country || data.country : data.country,
         latitude: data.latitude,
         longitude: data.longitude,
       },
@@ -386,38 +515,33 @@ export const updateProperty = async (req: Request, res: Response, next: NextFunc
 export const addPropertyImages = async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.user) {
-      return next(new AppError('Authentication required.', 401, 'UNAUTHENTICATED'));
+      return next(new AppError('Sign in to add photos.', 401, 'UNAUTHENTICATED'));
     }
 
     const { propertyId } = req.params;
-    const existing = await prisma.property.findUnique({
-      where: { id: propertyId },
-    });
-
+    const existing = await prisma.property.findUnique({ where: { id: propertyId } });
     if (!existing) {
       return next(new AppError('Property not found.', 404, 'PROPERTY_NOT_FOUND'));
     }
-
     if (req.user.role !== 'ADMIN' && existing.hostId !== req.user.id) {
-      return next(new AppError('Forbidden. Ownership required.', 403, 'FORBIDDEN'));
+      return next(new AppError('You can only edit your own listing.', 403, 'FORBIDDEN'));
     }
 
     const imagesSchema = z.object({
       images: z.array(z.object({
-        imageUrl: z.string().url(),
+        imageUrl: z.string().url('Each photo must be a valid URL'),
         altText: z.string().optional(),
         sortOrder: z.number().default(0),
-      })).min(1),
+      })).min(1, 'Add at least one photo'),
     });
-
     const { images } = imagesSchema.parse(req.body);
 
     const createdImages = await prisma.propertyImage.createMany({
-      data: images.map((img) => ({
+      data: images.map((image) => ({
         propertyId,
-        imageUrl: img.imageUrl,
-        altText: img.altText,
-        sortOrder: img.sortOrder,
+        imageUrl: image.imageUrl,
+        altText: image.altText,
+        sortOrder: image.sortOrder,
       })),
     });
 
@@ -430,45 +554,37 @@ export const addPropertyImages = async (req: Request, res: Response, next: NextF
 export const addPropertyRoom = async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.user) {
-      return next(new AppError('Authentication required.', 401, 'UNAUTHENTICATED'));
+      return next(new AppError('Sign in to add a room.', 401, 'UNAUTHENTICATED'));
     }
 
     const { propertyId } = req.params;
-    const existing = await prisma.property.findUnique({
-      where: { id: propertyId },
-    });
-
+    const existing = await prisma.property.findUnique({ where: { id: propertyId } });
     if (!existing) {
       return next(new AppError('Property not found.', 404, 'PROPERTY_NOT_FOUND'));
     }
-
     if (req.user.role !== 'ADMIN' && existing.hostId !== req.user.id) {
-      return next(new AppError('Forbidden. Ownership required.', 403, 'FORBIDDEN'));
+      return next(new AppError('You can only edit your own listing.', 403, 'FORBIDDEN'));
     }
 
-    const roomSchema = z.object({
-      name: z.string().min(2),
-      description: z.string().optional(),
-      capacity: z.number().int().min(1),
-      pricePerNight: z.number().int().min(1), // minor units
-      currency: z.string().default('INR'),
-      totalUnits: z.number().int().min(1),
-    });
+    const data = roomInputSchema.parse(req.body);
 
-    const data = roomSchema.parse(req.body);
-
-    const room = await prisma.room.create({
-      data: {
-        propertyId,
-        name: data.name,
-        description: data.description,
-        capacity: data.capacity,
-        pricePerNight: data.pricePerNight,
-        currency: data.currency,
-        totalUnits: data.totalUnits,
-        isActive: true,
-      },
-    });
+    const room = await prisma.$transaction(async (tx) => {
+      const created = await tx.room.create({
+        data: {
+          propertyId,
+          name: data.name,
+          description: data.description,
+          roomType: data.roomType,
+          capacity: data.capacity,
+          pricePerNight: rupeesToPaise(data.nightlyPrice),
+          currency: data.currency,
+          totalUnits: data.totalUnits,
+          isActive: true,
+        },
+      });
+      await refreshPropertySearchSnapshot(tx, propertyId);
+      return created;
+    }, transactionOptions);
 
     return res.status(201).json({ room });
   } catch (error) {

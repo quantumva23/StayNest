@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { apiFetch } from '../../lib/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiFetch, fieldErrors, messageForError, uploadImage } from '../../lib/api';
 import { Home, Sparkles, Plus, Image, Bed, ArrowRight, AlertCircle } from 'lucide-react';
 
 interface Amenity {
@@ -9,8 +9,25 @@ interface Amenity {
   name: string;
 }
 
+interface CityOption {
+  id: string;
+  name: string;
+  slug: string;
+  state?: string | null;
+}
+
+const ROOM_TYPES = [
+  { id: 'STANDARD', label: 'Standard' },
+  { id: 'DELUXE', label: 'Deluxe' },
+  { id: 'SUITE', label: 'Suite' },
+  { id: 'STUDIO', label: 'Studio' },
+  { id: 'CABIN', label: 'Cabin' },
+  { id: 'FAMILY', label: 'Family' },
+] as const;
+
 export const NewPropertyPage: React.FC = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   // Load amenities
   const { data: amenitiesData } = useQuery<{ amenities: Amenity[] }>({
@@ -18,18 +35,23 @@ export const NewPropertyPage: React.FC = () => {
     queryFn: () => apiFetch<{ amenities: Amenity[] }>('/amenities'),
   });
 
+  const { data: citiesData } = useQuery<{ cities: CityOption[] }>({
+    queryKey: ['cities'],
+    queryFn: () => apiFetch<{ cities: CityOption[] }>('/cities'),
+  });
+
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<'HOTEL' | 'LOUNGE' | 'GUEST_HOUSE'>('HOTEL');
   const [address, setAddress] = useState('');
-  const [city, setCity] = useState('');
+  const [citySlug, setCitySlug] = useState('');
   const [country, setCountry] = useState('India');
-  const [imageUrl, setImageUrl] = useState(
-    'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80'
-  );
+  const [imageUrl, setImageUrl] = useState('');
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
 
   // Initial room category
+  const [roomType, setRoomType] = useState<(typeof ROOM_TYPES)[number]['id']>('DELUXE');
   const [roomName, setRoomName] = useState('Deluxe King Suite');
   const [roomDescription, setRoomDescription] = useState('Spacious room with king bed and private view.');
   const [roomCapacity, setRoomCapacity] = useState(2);
@@ -37,6 +59,7 @@ export const NewPropertyPage: React.FC = () => {
   const [roomTotalUnits, setRoomTotalUnits] = useState(4);
 
   const [formError, setFormError] = useState<string | null>(null);
+  const [fields, setFields] = useState<Record<string, string>>({});
 
   const toggleAmenity = (id: string) => {
     setSelectedAmenities((prev) =>
@@ -47,8 +70,8 @@ export const NewPropertyPage: React.FC = () => {
   const createMutation = useMutation({
     mutationFn: async () => {
       setFormError(null);
+      setFields({});
 
-      // 1. Create property
       const propRes = await apiFetch<{ property: { id: string } }>('/properties', {
         method: 'POST',
         body: JSON.stringify({
@@ -56,7 +79,7 @@ export const NewPropertyPage: React.FC = () => {
           description,
           type,
           address,
-          city,
+          citySlug,
           country,
           amenityIds: selectedAmenities,
           images: [
@@ -66,35 +89,58 @@ export const NewPropertyPage: React.FC = () => {
               sortOrder: 0,
             },
           ],
-        }),
-      });
-
-      // 2. Create room category
-      await apiFetch(`/properties/${propRes.property.id}/rooms`, {
-        method: 'POST',
-        body: JSON.stringify({
-          name: roomName,
-          description: roomDescription,
-          capacity: Number(roomCapacity),
-          pricePerNight: Number(roomPriceINR) * 100, // convert INR to paise
-          totalUnits: Number(roomTotalUnits),
-          currency: 'INR',
+          rooms: [
+            {
+              name: roomName,
+              description: roomDescription,
+              roomType,
+              capacity: Number(roomCapacity),
+              nightlyPrice: Number(roomPriceINR),
+              totalUnits: Number(roomTotalUnits),
+              currency: 'INR',
+            },
+          ],
         }),
       });
 
       return propRes.property.id;
     },
-    onSuccess: (propertyId) => {
+    onSuccess: async (propertyId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['featured-properties'] }),
+        queryClient.invalidateQueries({ queryKey: ['explore-properties'] }),
+        queryClient.invalidateQueries({ queryKey: ['catalog'] }),
+        queryClient.invalidateQueries({ queryKey: ['host-properties'] }),
+      ]);
       navigate(`/properties/${propertyId}`);
     },
-    onError: (err: any) => {
-      setFormError(err.message || 'Failed to create listing.');
+    onError: (err: unknown) => {
+      setFields(fieldErrors(err));
+      setFormError(messageForError(err));
     },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!imageUrl) {
+      setFormError('Add a cover photo before submitting.');
+      return;
+    }
     createMutation.mutate();
+  };
+
+  const onCoverPhoto = async (file?: File) => {
+    if (!file) return;
+    setUploadingPhoto(true);
+    setFormError(null);
+    try {
+      setImageUrl(await uploadImage(file));
+    } catch (err) {
+      setImageUrl('');
+      setFormError(messageForError(err));
+    } finally {
+      setUploadingPhoto(false);
+    }
   };
 
   return (
@@ -111,7 +157,7 @@ export const NewPropertyPage: React.FC = () => {
         </p>
       </div>
 
-      {formError && (
+      {formError && Object.keys(fields).every((path) => !['name', 'description', 'address', 'citySlug', 'images.0.imageUrl', 'rooms.0.roomType', 'rooms.0.nightlyPrice', 'rooms.0.name', 'rooms.0.capacity', 'rooms.0.totalUnits'].includes(path)) && (
         <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-center space-x-2">
           <AlertCircle className="w-4 h-4 shrink-0" />
           <span>{formError}</span>
@@ -139,6 +185,7 @@ export const NewPropertyPage: React.FC = () => {
                 placeholder="e.g. Royal Lakeview Heritage Haveli"
                 className="w-full text-xs font-semibold px-4 py-3 rounded-2xl border border-[#E6E1D8] bg-[#FAFAF7] focus:bg-white focus:outline-none"
               />
+              {fields.name && <p className="text-[11px] text-red-700 mt-1">{fields.name}</p>}
             </div>
 
             <div>
@@ -160,14 +207,20 @@ export const NewPropertyPage: React.FC = () => {
               <label className="block text-[11px] font-bold uppercase tracking-wider text-staynest-muted mb-1">
                 City
               </label>
-              <input
-                type="text"
+              <select
                 required
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                placeholder="e.g. Udaipur, Manali, Goa"
-                className="w-full text-xs font-semibold px-4 py-3 rounded-2xl border border-[#E6E1D8] bg-[#FAFAF7] focus:bg-white focus:outline-none"
-              />
+                value={citySlug}
+                onChange={(e) => setCitySlug(e.target.value)}
+                className="w-full text-xs font-semibold px-4 py-3 rounded-2xl border border-[#E6E1D8] bg-[#FAFAF7] focus:bg-white focus:outline-none cursor-pointer"
+              >
+                <option value="">Choose a city</option>
+                {(citiesData?.cities || []).map((item) => (
+                  <option key={item.id} value={item.slug}>
+                    {item.name}{item.state ? `, ${item.state}` : ''}
+                  </option>
+                ))}
+              </select>
+              {fields.citySlug && <p className="text-[11px] text-red-700 mt-1">{fields.citySlug}</p>}
             </div>
 
             <div className="sm:col-span-2">
@@ -182,6 +235,7 @@ export const NewPropertyPage: React.FC = () => {
                 placeholder="Street address or local landmark"
                 className="w-full text-xs font-semibold px-4 py-3 rounded-2xl border border-[#E6E1D8] bg-[#FAFAF7] focus:bg-white focus:outline-none"
               />
+              {fields.address && <p className="text-[11px] text-red-700 mt-1">{fields.address}</p>}
             </div>
 
             <div className="sm:col-span-2">
@@ -196,20 +250,22 @@ export const NewPropertyPage: React.FC = () => {
                 placeholder="Describe the architecture, ambiance, views, and unique highlights of your property..."
                 className="w-full text-xs font-medium px-4 py-3 rounded-2xl border border-[#E6E1D8] bg-[#FAFAF7] focus:bg-white focus:outline-none leading-relaxed"
               />
+              {fields.description && <p className="text-[11px] text-red-700 mt-1">{fields.description}</p>}
             </div>
 
             <div className="sm:col-span-2">
               <label className="block text-[11px] font-bold uppercase tracking-wider text-staynest-muted mb-1">
-                Cover Photo URL (Unsplash or Cloudinary)
+                Cover photo
               </label>
               <input
-                type="url"
-                required
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                placeholder="https://..."
-                className="w-full text-xs font-semibold px-4 py-3 rounded-2xl border border-[#E6E1D8] bg-[#FAFAF7] focus:bg-white focus:outline-none"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(e) => onCoverPhoto(e.target.files?.[0])}
+                className="w-full text-xs font-semibold px-4 py-3 rounded-2xl border border-[#E6E1D8] bg-[#FAFAF7]"
               />
+              {uploadingPhoto && <p className="text-[11px] text-staynest-muted mt-1">Uploading photo...</p>}
+              {imageUrl && <img src={imageUrl} alt="" className="mt-3 h-32 w-48 object-cover rounded-2xl border border-[#E6E1D8]" />}
+              {fields['images.0.imageUrl'] && <p className="text-[11px] text-red-700 mt-1">{fields['images.0.imageUrl']}</p>}
             </div>
           </div>
         </div>
@@ -252,6 +308,23 @@ export const NewPropertyPage: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-[11px] font-bold uppercase tracking-wider text-staynest-muted mb-1">
+                Room type
+              </label>
+              <select
+                required
+                value={roomType}
+                onChange={(e) => setRoomType(e.target.value as (typeof ROOM_TYPES)[number]['id'])}
+                className="w-full text-xs font-semibold px-4 py-3 rounded-2xl border border-[#E6E1D8] bg-[#FAFAF7] focus:bg-white focus:outline-none cursor-pointer"
+              >
+                {ROOM_TYPES.map((item) => (
+                  <option key={item.id} value={item.id}>{item.label}</option>
+                ))}
+              </select>
+              {fields['rooms.0.roomType'] && <p className="text-[11px] text-red-700 mt-1">{fields['rooms.0.roomType']}</p>}
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-staynest-muted mb-1">
                 Room Category Name
               </label>
               <input
@@ -292,6 +365,7 @@ export const NewPropertyPage: React.FC = () => {
                 placeholder="e.g. 4500"
                 className="w-full text-xs font-semibold px-4 py-3 rounded-2xl border border-[#E6E1D8] bg-[#FAFAF7] focus:bg-white focus:outline-none"
               />
+              {fields['rooms.0.nightlyPrice'] && <p className="text-[11px] text-red-700 mt-1">{fields['rooms.0.nightlyPrice']}</p>}
             </div>
 
             <div>
@@ -335,10 +409,10 @@ export const NewPropertyPage: React.FC = () => {
           </button>
           <button
             type="submit"
-            disabled={createMutation.isPending}
+            disabled={createMutation.isPending || uploadingPhoto}
             className="px-8 py-3.5 rounded-full bg-staynest-terracotta hover:bg-staynest-terracotta-dark text-white text-xs font-bold shadow-md hover:shadow-lg disabled:opacity-50 flex items-center space-x-2"
           >
-            <span>{createMutation.isPending ? 'Publishing Listing...' : 'Publish Accommodation'}</span>
+            <span>{createMutation.isPending ? 'Submitting...' : 'Submit for review'}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>

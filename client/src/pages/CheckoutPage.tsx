@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { apiFetch, formatCurrency } from '../lib/api';
+import { apiFetch, formatCurrency, messageForError } from '../lib/api';
 import {
   ShieldCheck,
   Clock,
@@ -116,8 +116,8 @@ export const CheckoutPage: React.FC = () => {
     onSuccess: () => {
       refetch();
     },
-    onError: (err: any) => {
-      setPaymentError(err.message || 'Payment processing failed.');
+    onError: (err: unknown) => {
+      setPaymentError(messageForError(err));
     },
   });
 
@@ -134,7 +134,7 @@ export const CheckoutPage: React.FC = () => {
       <div className="max-w-md mx-auto my-20 p-8 bg-white rounded-3xl border border-[#E6E1D8] text-center space-y-4">
         <AlertTriangle className="w-10 h-10 text-staynest-terracotta mx-auto" />
         <h2 className="font-serif text-2xl font-bold">Booking Not Found</h2>
-        <p className="text-xs text-staynest-muted">We could not retrieve this reservation record.</p>
+        <p className="text-xs text-staynest-muted">{error ? messageForError(error) : 'We could not retrieve this reservation record.'}</p>
         <Link
           to="/explore"
           className="inline-block px-5 py-2.5 rounded-full bg-staynest-charcoal text-white text-xs font-semibold"

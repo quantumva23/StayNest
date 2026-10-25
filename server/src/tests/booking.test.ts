@@ -1,4 +1,14 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import { ZodError } from 'zod';
+import { createPropertySchema } from '../modules/properties/listingSchema';
+import {
+  computeSearchSnapshot,
+  paginateIds,
+  priceInRange,
+  propertiesWithAvailability,
+  rupeesToPaise,
+  unknownCityError,
+} from '../modules/properties/search';
 
 /**
  * Unit and algorithmic tests for StayNest critical booking rules
@@ -210,6 +220,78 @@ describe('StayNest Booking Business Logic & Correctness', () => {
       expect(checkCapacity(3)).toBe(true);
       expect(checkCapacity(4)).toBe(true);
       expect(checkCapacity(5)).toBe(false); // exceeds 4
+    });
+  });
+
+  describe('Search snapshot, price filters, and listing validation', () => {
+    const validListing = {
+      name: 'Lake House',
+      description: 'A quiet house beside the lake with a garden.',
+      type: 'GUEST_HOUSE',
+      address: '12 Lake Road',
+      citySlug: 'udaipur',
+      rooms: [
+        {
+          name: 'Garden Suite',
+          roomType: 'SUITE',
+          capacity: 2,
+          nightlyPrice: 4500,
+          totalUnits: 2,
+        },
+      ],
+    };
+
+    it('stores a rupee filter as paise and matches the room price', () => {
+      expect(rupeesToPaise(4500)).toBe(450000);
+      expect(priceInRange(450000, 4000, 5000)).toBe(true);
+      expect(priceInRange(850000, 4000, 5000)).toBe(false);
+    });
+
+    it('recomputes the search snapshot from active rooms only', () => {
+      const snapshot = computeSearchSnapshot([
+        { pricePerNight: 850000, capacity: 2, isActive: true },
+        { pricePerNight: 550000, capacity: 4, isActive: true },
+        { pricePerNight: 100000, capacity: 8, isActive: false },
+      ]);
+      expect(snapshot).toEqual({
+        minPricePerNight: 550000,
+        maxCapacity: 4,
+        hasActiveRooms: true,
+      });
+    });
+
+    it('keeps the date-filter total equal to the rows across pages', () => {
+      const rooms = [
+        { id: 'r1', propertyId: 'a', totalUnits: 1, capacity: 2 },
+        { id: 'r2', propertyId: 'b', totalUnits: 2, capacity: 2 },
+        { id: 'r3', propertyId: 'c', totalUnits: 1, capacity: 2 },
+      ];
+      const available = propertiesWithAvailability(rooms, [{ roomId: 'r2', quantity: 2 }]);
+      const ordered = ['a', 'b', 'c'].filter((id) => available.has(id));
+      const page1 = paginateIds(ordered, 1, 1);
+      const page2 = paginateIds(ordered, 2, 1);
+      expect(page1.total).toBe(ordered.length);
+      expect(page2.total).toBe(ordered.length);
+      expect(page1.items.length + page2.items.length).toBe(page1.total);
+      expect(ordered).not.toContain('b');
+    });
+
+    it('returns 400 when the city is not in the catalog', () => {
+      const error = unknownCityError([{ name: 'Udaipur', slug: 'udaipur' }]);
+      expect(error.statusCode).toBe(400);
+      expect(error.code).toBe('UNKNOWN_CITY');
+      expect(error.details.cities).toEqual([{ name: 'Udaipur', slug: 'udaipur' }]);
+    });
+
+    it('rejects an unknown room payload before a property can be written', () => {
+      expect(() => createPropertySchema.parse({ ...validListing, citySlug: '' })).toThrow(ZodError);
+      expect(() => createPropertySchema.parse({ ...validListing, rooms: [] })).toThrow(ZodError);
+      expect(() =>
+        createPropertySchema.parse({
+          ...validListing,
+          rooms: [{ ...validListing.rooms[0], roomType: 'PENTHOUSE' }],
+        })
+      ).toThrow(ZodError);
     });
   });
 });

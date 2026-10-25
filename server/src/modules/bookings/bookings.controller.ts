@@ -1,9 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { prisma } from '../../config/database';
+import { prisma, transactionOptions } from '../../config/database';
 import { env } from '../../config/env';
 import { AppError } from '../../middleware/errorHandler';
+import { overlappingStayWhere } from './availability';
 
 const quoteSchema = z.object({
   roomId: z.string().uuid(),
@@ -37,6 +38,10 @@ export const calculateQuote = async (req: Request, res: Response, next: NextFunc
       return next(new AppError('Selected room is unavailable or not found.', 404, 'ROOM_NOT_FOUND'));
     }
 
+    if (room.property.status !== 'ACTIVE') {
+      return next(new AppError('This listing is not open for booking yet.', 409, 'LISTING_NOT_PUBLIC'));
+    }
+
     if (guestsCount > room.capacity * quantity) {
       return next(
         new AppError(
@@ -58,18 +63,7 @@ export const calculateQuote = async (req: Request, res: Response, next: NextFunc
     // Check availability for these dates
     const now = new Date();
     const overlappingBookings = await prisma.booking.findMany({
-      where: {
-        roomId,
-        checkIn: { lt: parsedCheckOut },
-        checkOut: { gt: parsedCheckIn },
-        OR: [
-          { status: 'CONFIRMED' },
-          {
-            status: 'PENDING_PAYMENT',
-            expiresAt: { gt: now },
-          },
-        ],
-      },
+      where: overlappingStayWhere(roomId, parsedCheckIn, parsedCheckOut, now),
       select: { quantity: true },
     });
 
@@ -128,6 +122,9 @@ export const createBookingHold = async (req: Request, res: Response, next: NextF
 
     // Booking transaction with concurrency-safe inventory allocation
     const booking = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // Hold the room row so a second hold waits and then sees this one.
+      await tx.$queryRaw`SELECT id FROM rooms WHERE id = ${roomId} FOR UPDATE`;
+
       const room = await tx.room.findUnique({
         where: { id: roomId },
         include: { property: true },
@@ -135,6 +132,10 @@ export const createBookingHold = async (req: Request, res: Response, next: NextF
 
       if (!room || !room.isActive) {
         throw new AppError('Room not found or no longer active.', 404, 'ROOM_NOT_FOUND');
+      }
+
+      if (room.property.status !== 'ACTIVE') {
+        throw new AppError('This listing is not open for booking yet.', 409, 'LISTING_NOT_PUBLIC');
       }
 
       if (guestsCount > room.capacity * quantity) {
@@ -149,18 +150,7 @@ export const createBookingHold = async (req: Request, res: Response, next: NextF
 
       // Find overlapping confirmed bookings and active pending holds
       const overlappingBookings = await tx.booking.findMany({
-        where: {
-          roomId,
-          checkIn: { lt: parsedCheckOut },
-          checkOut: { gt: parsedCheckIn },
-          OR: [
-            { status: 'CONFIRMED' },
-            {
-              status: 'PENDING_PAYMENT',
-              expiresAt: { gt: now },
-            },
-          ],
-        },
+        where: overlappingStayWhere(roomId, parsedCheckIn, parsedCheckOut, now),
         select: { quantity: true },
       });
 
@@ -210,7 +200,7 @@ export const createBookingHold = async (req: Request, res: Response, next: NextF
       });
 
       return newBooking;
-    });
+    }, transactionOptions);
 
     return res.status(201).json({ booking });
   } catch (error) {

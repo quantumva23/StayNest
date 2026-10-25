@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth, User } from '../features/auth/AuthContext';
-import { apiFetch } from '../lib/api';
+import { apiFetch, fieldErrors, messageForError } from '../lib/api';
 import { Lock, Mail, User as UserIcon, Home, ArrowRight } from 'lucide-react';
 
 export const RegisterPage: React.FC = () => {
@@ -13,11 +13,13 @@ export const RegisterPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'GUEST' | 'HOST'>('GUEST');
   const [error, setError] = useState<string | null>(null);
+  const [fields, setFields] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setFields({});
     setIsLoading(true);
 
     try {
@@ -27,9 +29,10 @@ export const RegisterPage: React.FC = () => {
       });
 
       login(data.token, data.user);
-      navigate(role === 'HOST' ? '/host' : '/explore');
-    } catch (err: any) {
-      setError(err.message || 'Registration failed.');
+      navigate(data.user.role === 'HOST' ? '/host' : '/');
+    } catch (err: unknown) {
+      setFields(fieldErrors(err));
+      setError(messageForError(err));
     } finally {
       setIsLoading(false);
     }
@@ -50,7 +53,7 @@ export const RegisterPage: React.FC = () => {
           </p>
         </div>
 
-        {error && (
+        {error && Object.keys(fields).length === 0 && (
           <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700">
             {error}
           </div>
@@ -71,6 +74,7 @@ export const RegisterPage: React.FC = () => {
                 placeholder="Rohan Sharma"
                 className="w-full text-xs font-semibold pl-10 pr-3 py-3 rounded-2xl border border-[#E6E1D8] bg-[#FAFAF7] focus:bg-white focus:outline-none focus:border-staynest-charcoal"
               />
+              {fields.name && <p className="text-[11px] text-red-700 mt-1">{fields.name}</p>}
             </div>
           </div>
 
@@ -88,6 +92,7 @@ export const RegisterPage: React.FC = () => {
                 placeholder="rohan@example.com"
                 className="w-full text-xs font-semibold pl-10 pr-3 py-3 rounded-2xl border border-[#E6E1D8] bg-[#FAFAF7] focus:bg-white focus:outline-none focus:border-staynest-charcoal"
               />
+              {fields.email && <p className="text-[11px] text-red-700 mt-1">{fields.email}</p>}
             </div>
           </div>
 
@@ -106,6 +111,7 @@ export const RegisterPage: React.FC = () => {
                 placeholder="••••••••"
                 className="w-full text-xs font-semibold pl-10 pr-3 py-3 rounded-2xl border border-[#E6E1D8] bg-[#FAFAF7] focus:bg-white focus:outline-none focus:border-staynest-charcoal"
               />
+              {fields.password && <p className="text-[11px] text-red-700 mt-1">{fields.password}</p>}
             </div>
           </div>
 

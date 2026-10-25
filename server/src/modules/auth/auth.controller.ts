@@ -1,20 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
 import { prisma } from '../../config/database';
 import { env } from '../../config/env';
 import { AppError } from '../../middleware/errorHandler';
-
-// In-memory or simple hashing helper
-function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password + env.JWT_SECRET).digest('hex');
-}
+import { hashPassword, verifyPassword } from './password';
 
 const registerSchema = z.object({
-  email: z.string().email(),
-  name: z.string().min(2).max(100),
-  password: z.string().min(6),
+  email: z.string().email('Enter a valid email address'),
+  name: z.string().min(2, 'Name must be at least 2 characters').max(100),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
   role: z.enum(['GUEST', 'HOST']).optional().default('GUEST'),
 });
 
@@ -92,12 +87,15 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       return next(new AppError('Your account has been deactivated.', 403, 'ACCOUNT_DEACTIVATED'));
     }
 
-    // Verify password if hash exists
-    if (user.passwordHash) {
-      const hashed = hashPassword(password);
-      if (hashed !== user.passwordHash) {
-        return next(new AppError('Invalid email or password.', 401, 'INVALID_CREDENTIALS'));
-      }
+    if (!user.passwordHash || !verifyPassword(password, user.passwordHash)) {
+      return next(new AppError('Invalid email or password.', 401, 'INVALID_CREDENTIALS'));
+    }
+
+    if (!user.passwordHash.startsWith('scrypt$')) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash: hashPassword(password) },
+      });
     }
 
     const token = jwt.sign(

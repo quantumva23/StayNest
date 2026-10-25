@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { apiFetch, formatCurrency } from '../lib/api';
+import { apiFetch, formatCurrency, messageForError } from '../lib/api';
 import { Calendar, MapPin, AlertCircle, CheckCircle2, Clock, XCircle, ArrowRight } from 'lucide-react';
 
 interface BookingItem {
@@ -40,8 +40,8 @@ export const BookingsPage: React.FC = () => {
     onSuccess: () => {
       refetch();
     },
-    onError: (err: any) => {
-      setCancelError(err.message || 'Could not cancel booking.');
+    onError: (err: unknown) => {
+      setCancelError(messageForError(err));
     },
   });
 
@@ -109,7 +109,7 @@ export const BookingsPage: React.FC = () => {
         </div>
       ) : error ? (
         <div className="p-8 bg-white rounded-3xl border border-[#E6E1D8] text-center text-xs text-red-600">
-          Failed to load bookings. Please make sure you are signed in.
+          {messageForError(error)}
         </div>
       ) : data?.bookings && data.bookings.length > 0 ? (
         <div className="space-y-4">

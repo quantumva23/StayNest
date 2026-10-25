@@ -27,6 +27,15 @@ enum PropertyStatus {
   INACTIVE
 }
 
+enum RoomType {
+  STANDARD
+  DELUXE
+  SUITE
+  STUDIO
+  CABIN
+  FAMILY
+}
+
 enum BookingStatus {
   PENDING_PAYMENT
   CONFIRMED
@@ -58,28 +67,45 @@ model User {
   @@map("users")
 }
 
+model City {
+  id         String     @id @default(uuid())
+  name       String
+  slug       String     @unique
+  state      String?
+  country    String     @default("India")
+  properties Property[]
+
+  @@map("cities")
+}
+
 model Property {
-  id          String            @id @default(uuid())
-  hostId      String            @map("host_id")
-  name        String
-  description String            @db.Text
-  type        PropertyType
-  address     String
-  city        String
-  state       String?
-  country     String            @default("India")
-  latitude    Float?
-  longitude   Float?
-  status      PropertyStatus    @default(ACTIVE)
-  createdAt   DateTime          @default(now()) @map("created_at")
-  updatedAt   DateTime          @updatedAt @map("updated_at")
+  id               String         @id @default(uuid())
+  hostId           String         @map("host_id")
+  name             String
+  description      String         @db.Text
+  type             PropertyType
+  address          String
+  city             String
+  cityId           String         @map("city_id")
+  state            String?
+  country          String         @default("India")
+  latitude         Float?
+  longitude        Float?
+  status           PropertyStatus @default(ACTIVE)
+  minPricePerNight Int            @default(0) @map("min_price_per_night")
+  maxCapacity      Int            @default(0) @map("max_capacity")
+  hasActiveRooms   Boolean        @default(false) @map("has_active_rooms")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
 
-  host        User              @relation("HostProperties", fields: [hostId], references: [id], onDelete: Cascade)
-  rooms       Room[]
-  images      PropertyImage[]
-  amenities   PropertyAmenity[]
+  host             User           @relation("HostProperties", fields: [hostId], references: [id], onDelete: Cascade)
+  location         City           @relation(fields: [cityId], references: [id], onDelete: Restrict)
+  rooms            Room[]
+  images           PropertyImage[]
+  amenities        PropertyAmenity[]
 
-  @@index([status, city, type])
+  @@index([status, cityId, type])
+  @@index([status, minPricePerNight])
   @@index([hostId])
   @@map("properties")
 }
@@ -89,6 +115,7 @@ model Room {
   propertyId    String    @map("property_id")
   name          String
   description   String?   @db.Text
+  roomType      RoomType  @map("room_type")
   capacity      Int       @default(2)
   pricePerNight Int       @map("price_per_night") // Stored in minor currency units (paise)
   currency      String    @default("INR")
@@ -100,7 +127,7 @@ model Room {
   property      Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   bookings      Booking[]
 
-  @@index([propertyId])
+  @@index([propertyId, isActive, roomType, pricePerNight])
   @@map("rooms")
 }
 

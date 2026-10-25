@@ -1,9 +1,11 @@
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Load from server/.env or root .env
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
-dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
+// .env is the usual name. `env` is the file checked in this workspace.
+for (const name of ['.env', 'env']) {
+  dotenv.config({ path: path.resolve(process.cwd(), name) });
+  dotenv.config({ path: path.resolve(process.cwd(), '..', name) });
+}
 
 export const env = {
   NODE_ENV: process.env.NODE_ENV || 'development',

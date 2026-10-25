@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { Prisma } from '@prisma/client';
 import { ZodError } from 'zod';
 
 export class AppError extends Error {
@@ -33,16 +34,56 @@ export const errorHandler = (
 ) => {
   // Handle Zod validation errors
   if (err instanceof ZodError) {
+    const details = err.errors.map((e) => ({
+      path: e.path.join('.'),
+      message: e.message,
+    }));
     return res.status(400).json({
       error: {
         code: 'VALIDATION_ERROR',
-        message: 'Invalid request input',
-        details: err.errors.map((e) => ({
-          path: e.path.join('.'),
-          message: e.message,
-        })),
+        message: details[0]?.message || 'Check the highlighted fields and try again.',
+        details,
       },
     });
+  }
+
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    if (err.code === 'P2002') {
+      const target = Array.isArray(err.meta?.target) ? err.meta.target.join(' ') : String(err.meta?.target || '');
+      const message = target.includes('email')
+        ? 'An account with this email already exists.'
+        : target.includes('slug')
+          ? 'That city is already used.'
+          : 'That email or city is already used.';
+      return res.status(409).json({
+        error: { code: 'DUPLICATE', message },
+      });
+    }
+
+    if (err.code === 'P2025') {
+      return res.status(404).json({
+        error: { code: 'NOT_FOUND', message: 'That record is no longer available.' },
+      });
+    }
+
+    if (err.code === 'P2003') {
+      return res.status(400).json({
+        error: {
+          code: 'INVALID_REFERENCE',
+          message: 'A selected amenity or city is no longer available.',
+        },
+      });
+    }
+
+    if (err.code === 'P2028') {
+      console.error('[DatabaseBusy]', err.message);
+      return res.status(409).json({
+        error: {
+          code: 'DB_BUSY',
+          message: 'The database was busy and this save did not finish. Try again.',
+        },
+      });
+    }
   }
 
   // Handle known application errors
