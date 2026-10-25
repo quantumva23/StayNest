@@ -39,7 +39,7 @@
 | **State & Data** | TanStack Query, React Router | Efficient caching, mutations, and role-guarded routing |
 | **Backend** | Node.js, Express, TypeScript | REST API with modular architecture |
 | **Database & ORM** | PostgreSQL, Prisma ORM | Concurrency-safe transactions, UUIDs, migrations |
-| **Authentication** | Supabase Auth + JWT Verification | Managed user identities with server-authoritative roles |
+| **Authentication** | Local JWT | Server-signed tokens and server-authoritative roles |
 | **Payments** | Razorpay / Sandbox Mock Provider | Server orders, HMAC SHA256 signature verification, idempotent webhooks |
 | **Testing** | Vitest, Supertest | Booking concurrency, date overlaps, pricing calculations |
 
@@ -50,50 +50,19 @@
 ### 1. Prerequisites
 - **Node.js**: v18+ or v20+
 - **NPM**: v9+
-- **PostgreSQL**: Local instance, or free cloud database from [Supabase](https://supabase.com) or [Neon](https://neon.tech)
+- **Docker**: used to start local Postgres
 
-### 2. Clone and Install Dependencies
+### 2. Install and start
 ```bash
 git clone https://github.com/quantumva23/StayNest.git
 cd StayNest
 npm install
+npm start
 ```
 
-### 3. Configure Environment Variables
-Copy `.env.example` to `.env` in the root (and optionally inside `server/`):
-```bash
-cp .env.example .env
-```
+`npm start` starts Postgres, applies migrations, creates the demo accounts when they are missing, and runs the API (port 4000) and the site (port 5173). Open **[http://localhost:5173](http://localhost:5173)**.
 
-Ensure `DATABASE_URL` is set to your PostgreSQL instance:
-```env
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/staynest?schema=public"
-JWT_SECRET="dev-jwt-secret-min-32-chars-long-staynest-booking-platform"
-```
-
-### 4. Database Setup & Seeding
-Run Prisma migrations and seed the database with demo accounts, amenities, properties, and rooms:
-```bash
-# Generate Prisma Client
-npm --workspace=server run prisma:generate
-
-# Deploy migrations / push schema
-npx --workspace=server prisma db push
-
-# Seed rich demo properties and accounts
-npm --workspace=server run prisma:seed
-```
-
-### 5. Start Development Servers
-Start both backend API (port 4000) and frontend client (port 5173):
-```bash
-# In Terminal 1 (API Server):
-npm run dev:server
-
-# In Terminal 2 (React Client):
-npm run dev:client
-```
-Open **[http://localhost:5173](http://localhost:5173)** in your browser.
+Put stay photos in `photos/`. If the database has no listings, the next start builds them from those files.
 
 ---
 
@@ -123,9 +92,8 @@ npm test
 ## 🚢 Deployment
 
 ### 1. Database
-- Create a project on [Supabase](https://supabase.com) or [Neon](https://neon.tech).
-- Copy the transaction connection pooling URI to `DATABASE_URL`.
-- Run `npx --workspace=server prisma migrate deploy` and `npm --workspace=server run prisma:seed`.
+- Use the local Postgres database in `DATABASE_URL`.
+- Put stay photos in the repo `photos/` folder. On startup the API imports tables and, if the database has no stays, builds listings from those files.
 
 ### 2. API Backend (Render / Railway)
 - Root Directory: `server`

@@ -5,13 +5,16 @@ declare global {
   var __prisma: PrismaClient | undefined;
 }
 
-// Interactive booking transactions need a session connection. The pooler URL drops them.
-const databaseUrl = process.env.DIRECT_URL || process.env.DATABASE_URL;
+export const LOCAL_DATABASE_URL = 'postgresql://postgres:postgres@localhost:5432/staynest?schema=public';
+
+// A leftover cloud URL in the env file must not override the local database.
+const configured = process.env.DATABASE_URL || '';
+export const databaseUrl = !configured || /supabase\.com/i.test(configured) ? LOCAL_DATABASE_URL : configured;
 
 export const prisma =
   global.__prisma ||
   new PrismaClient({
-    datasources: databaseUrl ? { db: { url: databaseUrl } } : undefined,
+    datasources: { db: { url: databaseUrl } },
     log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
   });
 
@@ -19,5 +22,4 @@ if (process.env.NODE_ENV !== 'production') {
   global.__prisma = prisma;
 }
 
-// Remote Postgres often spends the default 5s just waiting on a lock or a connection.
 export const transactionOptions = { maxWait: 15_000, timeout: 20_000 };

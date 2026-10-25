@@ -12,13 +12,9 @@ export const env = {
   PORT: parseInt(process.env.PORT || '4000', 10),
   FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:5173',
   DATABASE_URL: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/staynest?schema=public',
-  
+
   // Auth
   JWT_SECRET: process.env.JWT_SECRET || 'staynest-secret-key-development-minimum-32-chars-long',
-  SUPABASE_URL: process.env.SUPABASE_URL || '',
-  SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || '',
-  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-  SUPABASE_JWT_SECRET: process.env.SUPABASE_JWT_SECRET || '',
 
   // Payments
   PAYMENT_PROVIDER: process.env.PAYMENT_PROVIDER || 'sandbox_mock',
