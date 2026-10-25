@@ -33,7 +33,7 @@ flowchart TB
 3. **Idempotent Webhooks**:
    - Webhook events are cryptographically verified and recorded in `payment_webhook_events` with unique `(provider, provider_event_id)` constraints.
 4. **Flexible Authentication**:
-   - Local JWT tokens are verified on the server.
+   - Uses Supabase Auth tokens verified server-side with `@supabase/supabase-js` or JWT verification.
    - User profiles in PostgreSQL maintain server-authoritative roles (`GUEST`, `HOST`, `ADMIN`).
 5. **Decoupled Integrations**:
    - Small provider interfaces (`IPaymentProvider`) isolate external gateway specifics from core reservation logic.

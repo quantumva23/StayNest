@@ -16,7 +16,6 @@ import adminRoutes from './modules/admin/admin.routes';
 import amenitiesRoutes from './modules/amenities/amenities.routes';
 import citiesRoutes from './modules/cities/cities.routes';
 import uploadsRoutes, { uploadDir } from './modules/uploads/uploads.routes';
-import { photosDir } from './scripts/importLocalCatalog';
 
 export const createApp = () => {
   const app = express();
@@ -52,11 +51,6 @@ export const createApp = () => {
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     next();
   }, express.static(uploadDir));
-
-  app.use('/catalog-photos', (_req, res, next) => {
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-    next();
-  }, express.static(photosDir()));
 
   // Health check endpoint
   app.get('/health', (req, res) => {

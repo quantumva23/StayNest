@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { createClient } from '@supabase/supabase-js';
 import { env } from '../config/env';
 import { prisma } from '../config/database';
 import { AppError } from './errorHandler';
@@ -20,6 +21,32 @@ declare global {
   }
 }
 
+// Auth calls are HTTP. Realtime needs a browser WebSocket, which Node 20 does not have.
+class UnusedSocket {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
+  readyState = 3;
+  url = '';
+  protocol = '';
+  onopen = null;
+  onmessage = null;
+  onclose = null;
+  onerror = null;
+  close() {}
+  send() {}
+  addEventListener() {}
+  removeEventListener() {}
+}
+
+const supabase = (env.SUPABASE_URL && env.SUPABASE_ANON_KEY)
+  ? createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      realtime: { transport: UnusedSocket as any },
+    })
+  : null;
+
 export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
   try {
     let token: string | undefined;
@@ -36,21 +63,60 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     }
 
     let userId: string | null = null;
+    let email: string | null = null;
 
-    try {
-      const decoded = jwt.verify(token, env.JWT_SECRET) as { sub?: string; id?: string; userId?: string };
-      userId = decoded.sub || decoded.id || decoded.userId || null;
-    } catch {
-      return next(new AppError('Invalid or expired authentication token.', 401, 'INVALID_TOKEN'));
+    // 1. Try Supabase Auth token verification if client is configured
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.auth.getUser(token);
+        if (!error && data?.user) {
+          userId = data.user.id;
+          email = data.user.email || null;
+        }
+      } catch (e) {
+        // Fall back to direct JWT verification
+      }
+    }
+
+    // 2. Fallback to standard JWT verification (for local dev, tests, or Supabase JWT secret)
+    if (!userId) {
+      const secrets = [...new Set([env.JWT_SECRET, env.SUPABASE_JWT_SECRET].filter(Boolean))];
+      for (const secret of secrets) {
+        try {
+          const decoded = jwt.verify(token, secret) as any;
+          userId = decoded.sub || decoded.id || decoded.userId;
+          email = decoded.email || null;
+          break;
+        } catch {
+          // Try the next signing secret.
+        }
+      }
+      if (!userId) {
+        return next(new AppError('Invalid or expired authentication token.', 401, 'INVALID_TOKEN'));
+      }
     }
 
     if (!userId) {
       return next(new AppError('Invalid token payload.', 401, 'INVALID_TOKEN'));
     }
 
-    const user = await prisma.user.findUnique({
+    // 3. Look up user profile in database to enforce server-side role & active status
+    let user = await prisma.user.findUnique({
       where: { id: userId },
     });
+
+    // If user profile is not yet in the DB but Supabase authenticated them, auto-provision profile
+    if (!user && email) {
+      user = await prisma.user.create({
+        data: {
+          id: userId,
+          email: email.toLowerCase(),
+          name: email.split('@')[0],
+          role: 'GUEST',
+          isActive: true,
+        },
+      });
+    }
 
     if (!user) {
       return next(new AppError('User account profile not found.', 401, 'ACCOUNT_NOT_FOUND'));
