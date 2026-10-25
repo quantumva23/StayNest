@@ -21,9 +21,30 @@ declare global {
   }
 }
 
-// Optional Supabase client instance if configured
+// Auth calls are HTTP. Realtime needs a browser WebSocket, which Node 20 does not have.
+class UnusedSocket {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
+  readyState = 3;
+  url = '';
+  protocol = '';
+  onopen = null;
+  onmessage = null;
+  onclose = null;
+  onerror = null;
+  close() {}
+  send() {}
+  addEventListener() {}
+  removeEventListener() {}
+}
+
 const supabase = (env.SUPABASE_URL && env.SUPABASE_ANON_KEY)
-  ? createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY)
+  ? createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      realtime: { transport: UnusedSocket as any },
+    })
   : null;
 
 export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
@@ -59,12 +80,18 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
 
     // 2. Fallback to standard JWT verification (for local dev, tests, or Supabase JWT secret)
     if (!userId) {
-      try {
-        const secret = env.SUPABASE_JWT_SECRET || env.JWT_SECRET;
-        const decoded = jwt.verify(token, secret) as any;
-        userId = decoded.sub || decoded.id || decoded.userId;
-        email = decoded.email || null;
-      } catch (jwtErr) {
+      const secrets = [...new Set([env.JWT_SECRET, env.SUPABASE_JWT_SECRET].filter(Boolean))];
+      for (const secret of secrets) {
+        try {
+          const decoded = jwt.verify(token, secret) as any;
+          userId = decoded.sub || decoded.id || decoded.userId;
+          email = decoded.email || null;
+          break;
+        } catch {
+          // Try the next signing secret.
+        }
+      }
+      if (!userId) {
         return next(new AppError('Invalid or expired authentication token.', 401, 'INVALID_TOKEN'));
       }
     }

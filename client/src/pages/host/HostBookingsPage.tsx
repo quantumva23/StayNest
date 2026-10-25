@@ -1,6 +1,6 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { apiFetch, formatCurrency } from '../../lib/api';
+import { apiFetch, formatCurrency, messageForError } from '../../lib/api';
 import { Calendar, Users, Mail, MapPin, CheckCircle2, Clock, XCircle } from 'lucide-react';
 
 interface HostBooking {
@@ -51,7 +51,7 @@ export const HostBookingsPage: React.FC = () => {
           </div>
         ) : error ? (
           <div className="text-center py-8 text-xs text-red-600">
-            Failed to load reservations.
+            {messageForError(error)}
           </div>
         ) : bookings.length > 0 ? (
           <div className="overflow-x-auto">

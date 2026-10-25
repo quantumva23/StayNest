@@ -169,6 +169,16 @@ export const AdminDashboardPage: React.FC = () => {
                             Approve (Active)
                           </button>
                         )}
+                        {p.status === 'PENDING_APPROVAL' && (
+                          <button
+                            onClick={() =>
+                              propertyStatusMutation.mutate({ propertyId: p.id, status: 'REJECTED' })
+                            }
+                            className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 text-[11px] font-semibold hover:bg-rose-100"
+                          >
+                            Reject
+                          </button>
+                        )}
                         {p.status !== 'INACTIVE' && (
                           <button
                             onClick={() =>

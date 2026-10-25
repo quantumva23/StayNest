@@ -1,7 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { prisma } from '../../config/database';
+import { prisma, transactionOptions } from '../../config/database';
 import { AppError } from '../../middleware/errorHandler';
+import { overlappingStayWhere } from '../bookings/availability';
+import { refreshPropertySearchSnapshot } from '../properties/searchSnapshot';
+import { ROOM_TYPES, rupeesToPaise } from '../properties/search';
 
 export const updateRoom = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -25,20 +28,35 @@ export const updateRoom = async (req: Request, res: Response, next: NextFunction
     }
 
     const updateSchema = z.object({
-      name: z.string().min(2).optional(),
+      name: z.string().min(2, 'Room name must be at least 2 characters').optional(),
       description: z.string().optional(),
-      capacity: z.number().int().min(1).optional(),
-      pricePerNight: z.number().int().min(1).optional(),
-      totalUnits: z.number().int().min(1).optional(),
+      roomType: z.enum(ROOM_TYPES).optional(),
+      capacity: z.number().int().min(1, 'Capacity must be at least 1 guest').optional(),
+      nightlyPrice: z.number().int().min(100, 'Nightly price must be at least ₹100').optional(),
+      totalUnits: z.number().int().min(1, 'Add at least 1 room unit').optional(),
       isActive: z.boolean().optional(),
     });
 
     const data = updateSchema.parse(req.body);
 
-    const updated = await prisma.room.update({
-      where: { id: roomId },
-      data,
-    });
+    const updated = await prisma.$transaction(async (tx) => {
+      const saved = await tx.room.update({
+        where: { id: roomId },
+        data: {
+          name: data.name,
+          description: data.description,
+          roomType: data.roomType,
+          capacity: data.capacity,
+          totalUnits: data.totalUnits,
+          isActive: data.isActive,
+          ...(data.nightlyPrice !== undefined
+            ? { pricePerNight: rupeesToPaise(data.nightlyPrice) }
+            : {}),
+        },
+      });
+      await refreshPropertySearchSnapshot(tx, room.propertyId);
+      return saved;
+    }, transactionOptions);
 
     return res.status(200).json({ room: updated });
   } catch (error) {
@@ -78,18 +96,7 @@ export const getRoomAvailability = async (req: Request, res: Response, next: Nex
 
     // Check overlap: existing.check_in < requested.check_out AND existing.check_out > requested.check_in
     const overlappingBookings = await prisma.booking.findMany({
-      where: {
-        roomId,
-        checkIn: { lt: parsedCheckOut },
-        checkOut: { gt: parsedCheckIn },
-        OR: [
-          { status: 'CONFIRMED' },
-          {
-            status: 'PENDING_PAYMENT',
-            expiresAt: { gt: now },
-          },
-        ],
-      },
+      where: overlappingStayWhere(roomId, parsedCheckIn, parsedCheckOut, now),
       select: { quantity: true },
     });
 

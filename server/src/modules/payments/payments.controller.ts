@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { prisma } from '../../config/database';
+import { prisma, transactionOptions } from '../../config/database';
 import { paymentProvider } from '../../integrations/paymentProvider';
 import { AppError } from '../../middleware/errorHandler';
 
@@ -133,7 +133,7 @@ export const verifyPayment = async (req: Request, res: Response, next: NextFunct
           expiresAt: null, // confirmed bookings do not expire
         },
       });
-    });
+    }, transactionOptions);
 
     return res.status(200).json({
       success: true,
@@ -213,7 +213,7 @@ export const handlePaymentWebhook = async (req: Request, res: Response, next: Ne
               },
             });
           }
-        });
+        }, transactionOptions);
       }
     }
 

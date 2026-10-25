@@ -1,12 +1,7 @@
 import { PrismaClient } from '@prisma/client';
-import crypto from 'crypto';
+import { hashPassword } from '../src/modules/auth/password';
 
 const prisma = new PrismaClient();
-
-function hashPassword(password: string): string {
-  const secret = process.env.JWT_SECRET || 'staynest-secret-key-development-minimum-32-chars-long';
-  return crypto.createHash('sha256').update(password + secret).digest('hex');
-}
 
 async function main() {
   console.log('[Seed] Seeding StayNest database...');
@@ -80,6 +75,26 @@ async function main() {
     guest: guest.email,
   });
 
+  const cityData = [
+    { name: 'Udaipur', slug: 'udaipur', state: 'Rajasthan', country: 'India' },
+    { name: 'Manali', slug: 'manali', state: 'Himachal Pradesh', country: 'India' },
+    { name: 'Goa', slug: 'goa', state: 'Goa', country: 'India' },
+    { name: 'Bangalore', slug: 'bangalore', state: 'Karnataka', country: 'India' },
+    { name: 'Jaipur', slug: 'jaipur', state: 'Rajasthan', country: 'India' },
+    { name: 'Kochi', slug: 'kochi', state: 'Kerala', country: 'India' },
+    { name: 'Munnar', slug: 'munnar', state: 'Kerala', country: 'India' },
+  ];
+
+  const cities = [];
+  for (const item of cityData) {
+    const city = await prisma.city.upsert({
+      where: { slug: item.slug },
+      update: { name: item.name, state: item.state, country: item.country },
+      create: item,
+    });
+    cities.push(city);
+  }
+
   // 3. Properties and Rooms
   const propertiesData = [
     {
@@ -87,6 +102,7 @@ async function main() {
       description: 'A restored 18th-century royal haveli featuring tranquil courtyards, traditional Rajasthani sandstone carvings, rooftop dining under the stars, and luxurious holistic wellness rituals.',
       type: 'HOTEL' as const,
       address: 'Near Lake Pichola, Old City',
+      citySlug: 'udaipur',
       city: 'Udaipur',
       state: 'Rajasthan',
       country: 'India',
@@ -112,6 +128,7 @@ async function main() {
         {
           name: 'Royal Heritage Suite',
           description: 'Spacious suite with hand-carved jharokhas, marble bath, and panoramic view of Lake Pichola.',
+          roomType: 'SUITE' as const,
           capacity: 2,
           pricePerNight: 850000, // INR 8,500.00
           currency: 'INR',
@@ -120,6 +137,7 @@ async function main() {
         {
           name: 'Courtyard Deluxe Room',
           description: 'Charming king room opening directly into the central fountain courtyard.',
+          roomType: 'DELUXE' as const,
           capacity: 3,
           pricePerNight: 550000, // INR 5,500.00
           currency: 'INR',
@@ -133,6 +151,7 @@ async function main() {
       description: 'Nestled amidst whispering cedar forests, Pinecrest is a cozy modern lounge featuring floor-to-ceiling glass, an artisan coffee and cocktail lounge, and open-fire deck.',
       type: 'LOUNGE' as const,
       address: 'Upper Mall Road, Wildflower Woods',
+      citySlug: 'manali',
       city: 'Manali',
       state: 'Himachal Pradesh',
       country: 'India',
@@ -153,6 +172,7 @@ async function main() {
         {
           name: 'Forest Loft Cabin',
           description: 'Two-tier loft with private wood-burning stove and panoramic balcony.',
+          roomType: 'CABIN' as const,
           capacity: 4,
           pricePerNight: 620000, // INR 6,200.00
           currency: 'INR',
@@ -161,6 +181,7 @@ async function main() {
         {
           name: 'Valley View Studio',
           description: 'Sunlit studio ideal for remote creatives and nature lovers.',
+          roomType: 'STUDIO' as const,
           capacity: 2,
           pricePerNight: 420000, // INR 4,200.00
           currency: 'INR',
@@ -174,6 +195,7 @@ async function main() {
       description: 'A serene Indo-Portuguese coastal guest house just 300 meters from the golden sands of Ashwem beach. Shaded by swaying palms with hammock-strewn verandas.',
       type: 'GUEST_HOUSE' as const,
       address: 'Mandrem Beach Road',
+      citySlug: 'goa',
       city: 'Goa',
       state: 'Goa',
       country: 'India',
@@ -194,6 +216,7 @@ async function main() {
         {
           name: 'Veranda King Garden Room',
           description: 'Relaxed bohemian room with private patio looking out onto tropical frangipani trees.',
+          roomType: 'STANDARD' as const,
           capacity: 2,
           pricePerNight: 380000, // INR 3,800.00
           currency: 'INR',
@@ -202,6 +225,7 @@ async function main() {
         {
           name: 'Two-Bedroom Beach Cottage',
           description: 'Full self-contained cottage with kitchenette for families or travel companions.',
+          roomType: 'FAMILY' as const,
           capacity: 5,
           pricePerNight: 750000, // INR 7,500.00
           currency: 'INR',
@@ -215,6 +239,7 @@ async function main() {
       description: 'Sophisticated metropolitan living in the heart of the business district. Featuring contemporary designer architecture, soundproof executive suites, and a skybar.',
       type: 'HOTEL' as const,
       address: 'Indiranagar 100ft Road',
+      citySlug: 'bangalore',
       city: 'Bangalore',
       state: 'Karnataka',
       country: 'India',
@@ -235,6 +260,7 @@ async function main() {
         {
           name: 'Executive King Suite',
           description: 'Ergonomic workspace, high-thread-count linens, and complimentary club lounge access.',
+          roomType: 'SUITE' as const,
           capacity: 2,
           pricePerNight: 690000, // INR 6,900.00
           currency: 'INR',
@@ -246,43 +272,72 @@ async function main() {
   ];
 
   for (const propData of propertiesData) {
+    const location = cities.find((city) => city.slug === propData.citySlug);
+    if (!location) {
+      throw new Error(`Missing seed city ${propData.citySlug}`);
+    }
+
+    const activeRooms = propData.rooms;
+    const snapshot = {
+      minPricePerNight: Math.min(...activeRooms.map((room) => room.pricePerNight)),
+      maxCapacity: Math.max(...activeRooms.map((room) => room.capacity)),
+      hasActiveRooms: activeRooms.length > 0,
+    };
+
     const existing = await prisma.property.findFirst({
       where: { name: propData.name },
+      include: { rooms: true },
     });
 
-    if (!existing) {
-      const property = await prisma.property.create({
-        data: {
-          hostId: host.id,
-          name: propData.name,
-          description: propData.description,
-          type: propData.type,
-          address: propData.address,
-          city: propData.city,
-          state: propData.state,
-          country: propData.country,
-          status: propData.status,
-          images: {
-            create: propData.images,
+    const property = existing
+      ? await prisma.property.update({
+          where: { id: existing.id },
+          data: {
+            city: location.name,
+            cityId: location.id,
+            state: location.state,
+            country: location.country,
+            ...snapshot,
           },
-          rooms: {
-            create: propData.rooms,
+        })
+      : await prisma.property.create({
+          data: {
+            hostId: host.id,
+            name: propData.name,
+            description: propData.description,
+            type: propData.type,
+            address: propData.address,
+            city: location.name,
+            cityId: location.id,
+            state: location.state,
+            country: location.country,
+            status: propData.status,
+            ...snapshot,
+            images: { create: propData.images },
+            rooms: { create: propData.rooms },
           },
-        },
-      });
+        });
 
-      // Connect amenities
-      for (const aName of propData.amenityNames) {
-        const amenity = amenities.find((a) => a.name === aName);
-        if (amenity) {
-          await prisma.propertyAmenity.create({
-            data: {
-              propertyId: property.id,
-              amenityId: amenity.id,
-            },
+    if (existing) {
+      for (const room of propData.rooms) {
+        const match = existing.rooms.find((saved) => saved.name === room.name);
+        if (match) {
+          await prisma.room.update({
+            where: { id: match.id },
+            data: { roomType: room.roomType, capacity: room.capacity, pricePerNight: room.pricePerNight },
           });
         }
       }
+    }
+
+    for (const aName of propData.amenityNames) {
+      const amenity = amenities.find((item) => item.name === aName);
+      if (!amenity) continue;
+      await prisma.propertyAmenity.upsert({
+        where: { propertyId_amenityId: { propertyId: property.id, amenityId: amenity.id } },
+        update: {},
+        create: { propertyId: property.id, amenityId: amenity.id },
+      });
     }
   }
 

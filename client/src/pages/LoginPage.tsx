@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth, User } from '../features/auth/AuthContext';
-import { apiFetch } from '../lib/api';
+import { apiFetch, fieldErrors, messageForError } from '../lib/api';
 import { Lock, Mail, ArrowRight, Sparkles, Home, Shield, User as UserIcon } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
@@ -13,11 +13,20 @@ export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [fields, setFields] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
+
+  const destinationFor = (role: User['role']) => {
+    if (searchParams.get('redirect')) return redirect;
+    if (role === 'HOST') return '/host';
+    if (role === 'ADMIN') return '/admin';
+    return '/';
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setFields({});
     setIsLoading(true);
 
     try {
@@ -27,9 +36,10 @@ export const LoginPage: React.FC = () => {
       });
 
       login(data.token, data.user);
-      navigate(redirect);
-    } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your credentials.');
+      navigate(destinationFor(data.user.role));
+    } catch (err: unknown) {
+      setFields(fieldErrors(err));
+      setError(messageForError(err));
     } finally {
       setIsLoading(false);
     }
@@ -39,6 +49,7 @@ export const LoginPage: React.FC = () => {
     setEmail(demoEmail);
     setPassword('password123');
     setError(null);
+    setFields({});
     setIsLoading(true);
 
     try {
@@ -48,9 +59,10 @@ export const LoginPage: React.FC = () => {
       });
 
       login(data.token, data.user);
-      navigate(redirect);
-    } catch (err: any) {
-      setError(err.message || 'Demo login failed.');
+      navigate(destinationFor(data.user.role));
+    } catch (err: unknown) {
+      setFields(fieldErrors(err));
+      setError(messageForError(err));
     } finally {
       setIsLoading(false);
     }
@@ -105,7 +117,7 @@ export const LoginPage: React.FC = () => {
           </div>
         </div>
 
-        {error && (
+        {error && Object.keys(fields).length === 0 && (
           <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700">
             {error}
           </div>
@@ -126,6 +138,7 @@ export const LoginPage: React.FC = () => {
                 placeholder="you@domain.com"
                 className="w-full text-xs font-semibold pl-10 pr-3 py-3 rounded-2xl border border-[#E6E1D8] bg-[#FAFAF7] focus:bg-white focus:outline-none focus:border-staynest-charcoal"
               />
+              {fields.email && <p className="text-[11px] text-red-700 mt-1">{fields.email}</p>}
             </div>
           </div>
 
@@ -143,6 +156,7 @@ export const LoginPage: React.FC = () => {
                 placeholder="••••••••"
                 className="w-full text-xs font-semibold pl-10 pr-3 py-3 rounded-2xl border border-[#E6E1D8] bg-[#FAFAF7] focus:bg-white focus:outline-none focus:border-staynest-charcoal"
               />
+              {fields.password && <p className="text-[11px] text-red-700 mt-1">{fields.password}</p>}
             </div>
           </div>
 

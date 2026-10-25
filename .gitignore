@@ -12,6 +12,7 @@ build/
 
 # Environment
 .env
+env
 .env.local
 .env.development.local
 .env.test.local
@@ -29,6 +30,9 @@ logs/
 Thumbs.db
 .vscode/
 .idea/
+
+# Uploaded stay photos
+server/uploads/
 
 # SQLite / Local DB if used in testing
 *.sqlite

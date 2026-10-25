@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { apiFetch, formatCurrency } from '../lib/api';
+import { apiFetch, formatCurrency, messageForError } from '../lib/api';
 import { useAuth } from '../features/auth/AuthContext';
 import {
   MapPin,
@@ -21,6 +21,7 @@ interface Room {
   id: string;
   name: string;
   description?: string;
+  roomType?: string;
   capacity: number;
   pricePerNight: number;
   currency: string;
@@ -36,10 +37,11 @@ interface PropertyDetail {
   city: string;
   state?: string;
   country: string;
+  status: string;
   images: Array<{ id: string; imageUrl: string; altText?: string }>;
   rooms: Room[];
   amenities: Array<{ id: string; name: string; iconKey?: string }>;
-  host: { id: string; name: string; email: string };
+  host: { id: string; name: string };
 }
 
 interface QuoteResponse {
@@ -109,7 +111,7 @@ export const PropertyDetailPage: React.FC = () => {
           guestsCount,
         }),
       }),
-    enabled: canQuote,
+    enabled: canQuote && data?.property.status === 'ACTIVE',
   });
 
   // Booking hold mutation
@@ -128,8 +130,8 @@ export const PropertyDetailPage: React.FC = () => {
     onSuccess: (res) => {
       navigate(`/checkout/${res.booking.id}`);
     },
-    onError: (err: any) => {
-      setBookingError(err.message || 'Failed to reserve room inventory.');
+    onError: (err: unknown) => {
+      setBookingError(messageForError(err));
     },
   });
 
@@ -156,7 +158,7 @@ export const PropertyDetailPage: React.FC = () => {
       <div className="max-w-md mx-auto my-20 p-8 bg-white rounded-3xl border border-[#E6E1D8] text-center space-y-4">
         <AlertCircle className="w-10 h-10 text-staynest-terracotta mx-auto" />
         <h2 className="font-serif text-2xl font-bold">Property not found</h2>
-        <p className="text-xs text-staynest-muted">This listing may have been moved or removed by the host.</p>
+        <p className="text-xs text-staynest-muted">{messageForError(error)}</p>
         <button
           onClick={() => navigate('/explore')}
           className="px-5 py-2.5 rounded-full bg-staynest-charcoal text-white text-xs font-semibold"
@@ -187,6 +189,11 @@ export const PropertyDetailPage: React.FC = () => {
         <h1 className="font-serif text-3xl sm:text-5xl font-bold text-staynest-charcoal">
           {property.name}
         </h1>
+        {property.status !== 'ACTIVE' && (
+          <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+            This stay is {property.status.replace(/_/g, ' ').toLowerCase()} and does not appear in search until an admin approves it.
+          </p>
+        )}
       </div>
 
       {/* Image Gallery */}
@@ -293,6 +300,11 @@ export const PropertyDetailPage: React.FC = () => {
                       <div>
                         <div className="flex items-center space-x-2">
                           <h4 className="font-bold text-sm text-staynest-charcoal">{room.name}</h4>
+                          {room.roomType && (
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-staynest-charcoal text-white font-medium uppercase tracking-wide">
+                              {room.roomType.replace('_', ' ')}
+                            </span>
+                          )}
                           <span className="text-[11px] px-2 py-0.5 rounded-full bg-staynest-sand text-staynest-olive font-medium">
                             Up to {room.capacity} guests
                           </span>
@@ -423,7 +435,7 @@ export const PropertyDetailPage: React.FC = () => {
               </div>
             ) : quoteError ? (
               <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700">
-                {(quoteError as any).message || 'Invalid reservation dates'}
+                {messageForError(quoteError)}
               </div>
             ) : quote ? (
               <div className="space-y-2.5 pt-2 border-t border-[#F0EBE1] text-xs">
@@ -468,7 +480,7 @@ export const PropertyDetailPage: React.FC = () => {
             {/* Action button */}
             <button
               onClick={handleReserve}
-              disabled={createHoldMutation.isPending || (quote && !quote.isAvailable)}
+              disabled={property.status !== 'ACTIVE' || createHoldMutation.isPending || (quote && !quote.isAvailable)}
               className="w-full py-4 rounded-2xl bg-staynest-terracotta hover:bg-staynest-terracotta-dark text-white font-bold text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
             >
               {createHoldMutation.isPending ? (

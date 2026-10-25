@@ -1,8 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { apiFetch, formatCurrency } from '../../lib/api';
-import { PlusCircle, Home, Calendar, Users, ArrowUpRight, Bed } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiFetch, formatCurrency, messageForError } from '../../lib/api';
+import { PlusCircle, Home, Calendar, ArrowUpRight } from 'lucide-react';
+
+interface HostRoom {
+  id: string;
+  name: string;
+  roomType: string;
+  capacity: number;
+  pricePerNight: number;
+  totalUnits: number;
+  isActive: boolean;
+}
 
 interface HostProperty {
   id: string;
@@ -11,9 +21,108 @@ interface HostProperty {
   city: string;
   status: string;
   images: Array<{ imageUrl: string }>;
-  rooms: Array<{ id: string; name: string; capacity: number; pricePerNight: number; totalUnits: number }>;
+  rooms: HostRoom[];
   _count: { rooms: number };
 }
+
+const ROOM_TYPES = ['STANDARD', 'DELUXE', 'SUITE', 'STUDIO', 'CABIN', 'FAMILY'];
+
+function refreshStayQueries(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: ['host-properties'] });
+  queryClient.invalidateQueries({ queryKey: ['featured-properties'] });
+  queryClient.invalidateQueries({ queryKey: ['explore-properties'] });
+  queryClient.invalidateQueries({ queryKey: ['catalog'] });
+}
+
+const RoomControls: React.FC<{ room: HostRoom }> = ({ room }) => {
+  const queryClient = useQueryClient();
+  const [price, setPrice] = useState(String(Math.round(room.pricePerNight / 100)));
+  const [error, setError] = useState<string | null>(null);
+  const save = useMutation({
+    mutationFn: (body: { nightlyPrice?: number; isActive?: boolean }) =>
+      apiFetch(`/rooms/${room.id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onSuccess: () => {
+      setError(null);
+      refreshStayQueries(queryClient);
+    },
+    onError: (err: unknown) => setError(messageForError(err)),
+  });
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs">
+      <span className="font-semibold text-staynest-charcoal">{room.name}</span>
+      <span className="text-staynest-muted">{room.roomType} · {room.capacity} guests · {room.totalUnits} units · {formatCurrency(room.pricePerNight)}</span>
+      <input
+        type="number"
+        min={100}
+        value={price}
+        onChange={(e) => setPrice(e.target.value)}
+        className="w-24 px-2 py-1 rounded-lg border border-[#E6E1D8] bg-white"
+        aria-label={`Nightly price for ${room.name}`}
+      />
+      <button
+        type="button"
+        onClick={() => save.mutate({ nightlyPrice: Number(price) })}
+        className="px-2 py-1 rounded-lg border border-[#E6E1D8] bg-white font-semibold"
+      >
+        Save price
+      </button>
+      <button
+        type="button"
+        onClick={() => save.mutate({ isActive: !room.isActive })}
+        className="px-2 py-1 rounded-lg border border-[#E6E1D8] bg-white font-semibold"
+      >
+        {room.isActive ? 'Deactivate' : 'Activate'}
+      </button>
+      {error && <span className="text-red-700">{error}</span>}
+    </div>
+  );
+};
+
+const AddRoomForm: React.FC<{ propertyId: string }> = ({ propertyId }) => {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState('');
+  const [roomType, setRoomType] = useState('STANDARD');
+  const [capacity, setCapacity] = useState(2);
+  const [nightlyPrice, setNightlyPrice] = useState(3000);
+  const [totalUnits, setTotalUnits] = useState(1);
+  const [error, setError] = useState<string | null>(null);
+  const add = useMutation({
+    mutationFn: () =>
+      apiFetch(`/properties/${propertyId}/rooms`, {
+        method: 'POST',
+        body: JSON.stringify({ name, roomType, capacity, nightlyPrice, totalUnits, currency: 'INR' }),
+      }),
+    onSuccess: () => {
+      setName('');
+      setError(null);
+      refreshStayQueries(queryClient);
+    },
+    onError: (err: unknown) => setError(messageForError(err)),
+  });
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        add.mutate();
+      }}
+      className="flex flex-wrap items-end gap-2"
+    >
+      <input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Room name" className="px-2 py-1.5 rounded-lg border border-[#E6E1D8] bg-white text-xs" />
+      <select value={roomType} onChange={(e) => setRoomType(e.target.value)} className="px-2 py-1.5 rounded-lg border border-[#E6E1D8] bg-white text-xs">
+        {ROOM_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+      </select>
+      <input type="number" min={1} value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} className="w-16 px-2 py-1.5 rounded-lg border border-[#E6E1D8] bg-white text-xs" aria-label="Capacity" />
+      <input type="number" min={100} value={nightlyPrice} onChange={(e) => setNightlyPrice(Number(e.target.value))} className="w-24 px-2 py-1.5 rounded-lg border border-[#E6E1D8] bg-white text-xs" aria-label="Nightly price in rupees" />
+      <input type="number" min={1} value={totalUnits} onChange={(e) => setTotalUnits(Number(e.target.value))} className="w-16 px-2 py-1.5 rounded-lg border border-[#E6E1D8] bg-white text-xs" aria-label="Units" />
+      <button type="submit" disabled={add.isPending} className="px-3 py-1.5 rounded-lg bg-staynest-charcoal text-white text-xs font-semibold">
+        Add room
+      </button>
+      {error && <span className="text-[11px] text-red-700">{error}</span>}
+    </form>
+  );
+};
 
 export const HostDashboardPage: React.FC = () => {
   const { data, isLoading, error } = useQuery<{ properties: HostProperty[] }>({
@@ -67,7 +176,7 @@ export const HostDashboardPage: React.FC = () => {
         <div className="p-5 rounded-3xl bg-white border border-[#E6E1D8] shadow-subtle space-y-1">
           <p className="text-xs font-bold uppercase tracking-wider text-staynest-muted">Properties</p>
           <p className="text-3xl font-serif font-bold text-staynest-charcoal">{properties.length}</p>
-          <p className="text-[11px] text-staynest-muted">Active published listings</p>
+          <p className="text-[11px] text-staynest-muted">Including stays waiting for review</p>
         </div>
 
         <div className="p-5 rounded-3xl bg-white border border-[#E6E1D8] shadow-subtle space-y-1">
@@ -97,50 +206,45 @@ export const HostDashboardPage: React.FC = () => {
           </div>
         ) : error ? (
           <div className="text-center py-8 text-xs text-red-600">
-            Failed to load host properties. Please ensure you are logged in as a host.
+            {messageForError(error)}
           </div>
         ) : properties.length > 0 ? (
           <div className="space-y-4">
             {properties.map((property) => (
-              <div
-                key={property.id}
-                className="p-5 rounded-2xl border border-[#E6E1D8] bg-[#FAFAF7] flex flex-col md:flex-row md:items-center justify-between gap-4"
-              >
-                <div className="flex items-center space-x-4">
-                  <div className="w-16 h-16 rounded-xl overflow-hidden bg-gray-200 shrink-0">
-                    <img
-                      src={property.images[0]?.imageUrl || 'https://images.unsplash.com/photo-1566073771259-6a8506099945'}
-                      alt={property.name}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-staynest-sand text-staynest-olive">
-                        {property.type}
-                      </span>
-                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                        {property.status}
-                      </span>
+              <div key={property.id} className="p-5 rounded-2xl border border-[#E6E1D8] bg-[#FAFAF7] space-y-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-16 h-16 rounded-xl overflow-hidden bg-gray-200 shrink-0">
+                      <img
+                        src={property.images[0]?.imageUrl || 'https://images.unsplash.com/photo-1566073771259-6a8506099945'}
+                        alt={property.name}
+                        className="w-full h-full object-cover"
+                      />
                     </div>
-                    <h3 className="font-serif text-lg font-bold text-staynest-charcoal mt-1">
-                      {property.name}
-                    </h3>
-                    <p className="text-xs text-staynest-muted">
-                      {property.city} • {property.rooms?.length || 0} room categories
-                    </p>
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-staynest-sand text-staynest-olive">
+                          {property.type}
+                        </span>
+                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${property.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                          {property.status.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                      <h3 className="font-serif text-lg font-bold text-staynest-charcoal mt-1">{property.name}</h3>
+                      <p className="text-xs text-staynest-muted">{property.city}</p>
+                    </div>
                   </div>
-                </div>
-
-                <div className="flex items-center space-x-3">
                   <Link
                     to={`/properties/${property.id}`}
-                    className="px-4 py-2 rounded-full border border-[#E6E1D8] bg-white text-staynest-charcoal text-xs font-semibold hover:border-gray-400 flex items-center space-x-1"
+                    className="px-4 py-2 rounded-full border border-[#E6E1D8] bg-white text-staynest-charcoal text-xs font-semibold hover:border-gray-400 flex items-center space-x-1 w-fit"
                   >
-                    <span>View Public Page</span>
+                    <span>View page</span>
                     <ArrowUpRight className="w-3.5 h-3.5" />
                   </Link>
+                </div>
+                <div className="space-y-2">
+                  {property.rooms.map((room) => <RoomControls key={room.id} room={room} />)}
+                  <AddRoomForm propertyId={property.id} />
                 </div>
               </div>
             ))}

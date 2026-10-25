@@ -1,6 +1,15 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Search, MapPin, Calendar, Users } from 'lucide-react';
+import { apiFetch } from '../../lib/api';
+
+interface CityOption {
+  id: string;
+  name: string;
+  slug: string;
+  state?: string | null;
+}
 
 interface SearchBarProps {
   initialCity?: string;
@@ -25,20 +34,38 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const [checkOut, setCheckOut] = useState(initialCheckOut);
   const [guests, setGuests] = useState(initialGuests);
   const [type, setType] = useState(initialType);
+  const [openSuggestions, setOpenSuggestions] = useState(false);
+
+  const { data } = useQuery<{ cities: CityOption[] }>({
+    queryKey: ['cities'],
+    queryFn: () => apiFetch<{ cities: CityOption[] }>('/cities'),
+  });
+
+  const suggestions = useMemo(() => {
+    const cities = data?.cities || [];
+    const term = city.trim().toLowerCase();
+    if (!term) return cities.slice(0, 6);
+    return cities
+      .filter((item) => item.name.toLowerCase().includes(term) || item.slug.includes(term))
+      .slice(0, 6);
+  }, [city, data]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     const params = new URLSearchParams();
-    if (city.trim()) params.set('city', city.trim());
+    const match = data?.cities.find(
+      (item) => item.name.toLowerCase() === city.trim().toLowerCase() || item.slug === city.trim().toLowerCase()
+    );
+    if (match) params.set('city', match.slug);
+    else if (city.trim()) params.set('city', city.trim());
     if (checkIn) params.set('checkIn', checkIn);
     if (checkOut) params.set('checkOut', checkOut);
     if (guests > 1) params.set('guests', String(guests));
     if (type) params.set('type', type);
-
+    setOpenSuggestions(false);
     navigate(`/explore?${params.toString()}`);
   };
 
-  // Get today's ISO date string for min date limit
   const today = new Date().toISOString().split('T')[0];
 
   return (
@@ -48,9 +75,8 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         compact ? 'max-w-4xl mx-auto' : 'max-w-5xl mx-auto'
       }`}
     >
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-center">
-        {/* Destination */}
-        <div className="md:col-span-4 px-3 py-1.5 rounded-2xl hover:bg-[#FAFAF7] transition-colors border border-transparent hover:border-[#E6E1D8]">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end">
+        <div className="md:col-span-3 px-3 py-1.5 rounded-2xl hover:bg-[#FAFAF7] transition-colors border border-transparent hover:border-[#E6E1D8] relative">
           <label className="block text-[11px] font-bold uppercase tracking-wider text-staynest-muted">
             Destination
           </label>
@@ -58,16 +84,54 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             <MapPin className="w-4 h-4 text-staynest-terracotta shrink-0" />
             <input
               type="text"
-              placeholder="e.g. Udaipur, Manali, Goa"
+              placeholder="Udaipur, Manali, Goa"
               value={city}
-              onChange={(e) => setCity(e.target.value)}
+              onChange={(e) => {
+                setCity(e.target.value);
+                setOpenSuggestions(true);
+              }}
+              onFocus={() => setOpenSuggestions(true)}
               className="w-full text-sm font-semibold text-staynest-charcoal bg-transparent placeholder-gray-400 focus:outline-none"
             />
           </div>
+          {openSuggestions && suggestions.length > 0 && (
+            <ul className="absolute left-0 right-0 top-full z-20 mt-1 bg-white border border-[#E6E1D8] rounded-2xl shadow-hover overflow-hidden text-left">
+              {suggestions.map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCity(item.name);
+                      setOpenSuggestions(false);
+                    }}
+                    className="w-full px-3 py-2 text-xs font-semibold text-staynest-charcoal hover:bg-[#FAFAF7] text-left"
+                  >
+                    {item.name}
+                    {item.state ? <span className="text-staynest-muted font-medium">, {item.state}</span> : null}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
-        {/* Check In */}
-        <div className="md:col-span-2.5 px-3 py-1.5 rounded-2xl hover:bg-[#FAFAF7] transition-colors border border-transparent hover:border-[#E6E1D8]">
+        <div className="md:col-span-2 px-3 py-1.5 rounded-2xl hover:bg-[#FAFAF7] transition-colors border border-transparent hover:border-[#E6E1D8]">
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-staynest-muted">
+            Stay type
+          </label>
+          <select
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+            className="w-full text-xs font-semibold text-staynest-charcoal bg-transparent focus:outline-none cursor-pointer mt-0.5"
+          >
+            <option value="">All stays</option>
+            <option value="HOTEL">Boutique Hotel</option>
+            <option value="LOUNGE">Scenic Lounge</option>
+            <option value="GUEST_HOUSE">Guest House</option>
+          </select>
+        </div>
+
+        <div className="md:col-span-2 px-3 py-1.5 rounded-2xl hover:bg-[#FAFAF7] transition-colors border border-transparent hover:border-[#E6E1D8]">
           <label className="block text-[11px] font-bold uppercase tracking-wider text-staynest-muted">
             Check-In
           </label>
@@ -79,17 +143,14 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               value={checkIn}
               onChange={(e) => {
                 setCheckIn(e.target.value);
-                if (checkOut && e.target.value >= checkOut) {
-                  setCheckOut('');
-                }
+                if (checkOut && e.target.value >= checkOut) setCheckOut('');
               }}
               className="w-full text-xs font-semibold text-staynest-charcoal bg-transparent focus:outline-none"
             />
           </div>
         </div>
 
-        {/* Check Out */}
-        <div className="md:col-span-2.5 px-3 py-1.5 rounded-2xl hover:bg-[#FAFAF7] transition-colors border border-transparent hover:border-[#E6E1D8]">
+        <div className="md:col-span-2 px-3 py-1.5 rounded-2xl hover:bg-[#FAFAF7] transition-colors border border-transparent hover:border-[#E6E1D8]">
           <label className="block text-[11px] font-bold uppercase tracking-wider text-staynest-muted">
             Check-Out
           </label>
@@ -105,7 +166,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           </div>
         </div>
 
-        {/* Guests */}
         <div className="md:col-span-2 px-3 py-1.5 rounded-2xl hover:bg-[#FAFAF7] transition-colors border border-transparent hover:border-[#E6E1D8]">
           <label className="block text-[11px] font-bold uppercase tracking-wider text-staynest-muted">
             Guests
@@ -126,7 +186,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           </div>
         </div>
 
-        {/* Submit Search Button */}
         <div className="md:col-span-1 flex justify-end">
           <button
             type="submit"

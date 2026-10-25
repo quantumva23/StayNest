@@ -13,6 +13,7 @@ export interface PropertyCardData {
   minPricePerNight: number;
   currency: string;
   roomCount: number;
+  roomTypes?: string[];
   amenities?: Array<{ id: string; name: string }>;
 }
 
@@ -58,6 +59,11 @@ export const PropertyCard: React.FC<{ property: PropertyCardData }> = ({ propert
           <h3 className="font-serif text-lg font-bold text-staynest-charcoal group-hover:text-staynest-terracotta transition-colors line-clamp-1">
             {property.name}
           </h3>
+          {property.roomTypes && property.roomTypes.length > 0 && (
+            <p className="text-[11px] text-staynest-muted mt-1">
+              {property.roomTypes.map((type) => type.replace('_', ' ').toLowerCase()).join(' · ')}
+            </p>
+          )}
 
           {/* Quick amenities */}
           {property.amenities && property.amenities.length > 0 && (

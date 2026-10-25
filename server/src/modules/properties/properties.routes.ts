@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import {
+  getCatalog,
   getProperties,
   getPropertyById,
   createProperty,
@@ -11,7 +12,8 @@ import { authenticate, requireRole } from '../../middleware/auth';
 
 const router = Router();
 
-// Public listing & search
+// Public listing & search. Catalog must stay ahead of /:propertyId.
+router.get('/catalog', getCatalog);
 router.get('/', getProperties);
 router.get('/:propertyId', getPropertyById);
 
