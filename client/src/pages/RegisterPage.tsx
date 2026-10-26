@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth, User } from '../features/auth/AuthContext';
 import { apiFetch, fieldErrors, messageForError } from '../lib/api';
-import { Lock, Mail, User as UserIcon, Home, ArrowRight } from 'lucide-react';
+import { Lock, Mail, User as UserIcon, Home, ArrowRight, Eye, EyeOff } from 'lucide-react';
 
 export const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
@@ -11,6 +11,7 @@ export const RegisterPage: React.FC = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<'GUEST' | 'HOST'>('GUEST');
   const [error, setError] = useState<string | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
@@ -25,7 +26,7 @@ export const RegisterPage: React.FC = () => {
     try {
       const data = await apiFetch<{ token: string; user: User }>('/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ name, email, password, role }),
+        body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), password, role }),
       });
 
       login(data.token, data.user);
@@ -103,14 +104,23 @@ export const RegisterPage: React.FC = () => {
             <div className="relative">
               <Lock className="w-4 h-4 text-staynest-muted absolute left-3.5 top-3.5" />
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 required
                 minLength={6}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full text-xs font-semibold pl-10 pr-3 py-3 rounded-2xl border border-[#E6E1D8] bg-[#FAFAF7] focus:bg-white focus:outline-none focus:border-staynest-charcoal"
+                className="w-full text-xs font-semibold pl-10 pr-10 py-3 rounded-2xl border border-[#E6E1D8] bg-[#FAFAF7] focus:bg-white focus:outline-none focus:border-staynest-charcoal"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                tabIndex={-1}
+                className="absolute right-3.5 top-3.5 text-staynest-muted hover:text-staynest-charcoal transition-colors focus:outline-none"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
               {fields.password && <p className="text-[11px] text-red-700 mt-1">{fields.password}</p>}
             </div>
           </div>

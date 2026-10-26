@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, formatCurrency, messageForError } from '../lib/api';
 import { ResponsiveImage } from '../components/common/ResponsiveImage';
-import { Calendar, MapPin, AlertCircle, CheckCircle2, Clock, XCircle, ArrowRight } from 'lucide-react';
+import { useAuth } from '../features/auth/AuthContext';
+import { Calendar, MapPin, AlertCircle, CheckCircle2, Clock, XCircle, ArrowRight, Building2 } from 'lucide-react';
 
 interface BookingItem {
   id: string;
@@ -28,17 +29,23 @@ interface BookingItem {
 }
 
 export const BookingsPage: React.FC = () => {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [cancelError, setCancelError] = useState<string | null>(null);
 
   const { data, isLoading, error, refetch } = useQuery<{ bookings: BookingItem[] }>({
     queryKey: ['my-bookings'],
     queryFn: () => apiFetch<{ bookings: BookingItem[] }>('/bookings/me'),
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 
   const cancelMutation = useMutation({
     mutationFn: (bookingId: string) =>
       apiFetch(`/bookings/${bookingId}/cancel`, { method: 'POST' }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
       refetch();
     },
     onError: (err: unknown) => {
@@ -87,13 +94,25 @@ export const BookingsPage: React.FC = () => {
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
-      <div>
-        <h1 className="font-serif text-3xl sm:text-4xl font-bold text-staynest-charcoal">
-          My Reservations
-        </h1>
-        <p className="text-xs text-staynest-muted mt-1">
-          Manage your upcoming stays, pending inventory holds, and receipts.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="font-serif text-3xl sm:text-4xl font-bold text-staynest-charcoal">
+            My Reservations
+          </h1>
+          <p className="text-xs text-staynest-muted mt-1">
+            Manage your personal upcoming stays, pending inventory holds, and receipts.
+          </p>
+        </div>
+        {user?.role === 'HOST' && (
+          <Link
+            to="/host/bookings"
+            className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-2xl bg-staynest-olive/10 border border-staynest-olive/20 text-staynest-olive text-xs font-semibold hover:bg-staynest-olive/20 transition-all self-start sm:self-auto"
+          >
+            <Building2 className="w-4 h-4" />
+            <span>View Guest Bookings On My Stays</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        )}
       </div>
 
       {cancelError && (

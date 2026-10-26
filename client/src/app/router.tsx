@@ -80,6 +80,10 @@ export const router = createBrowserRouter([
 
       // Guest protected pages
       {
+        path: 'bookings',
+        element: <Navigate to="/account/bookings" replace />,
+      },
+      {
         path: 'account/bookings',
         element: (
           <ProtectedRoute>

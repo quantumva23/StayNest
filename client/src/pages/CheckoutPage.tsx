@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, formatCurrency, messageForError } from '../lib/api';
 import { ResponsiveImage } from '../components/common/ResponsiveImage';
 import {
@@ -85,6 +85,8 @@ export const CheckoutPage: React.FC = () => {
     return () => clearInterval(interval);
   }, [booking]);
 
+  const queryClient = useQueryClient();
+
   // Payment mutation
   const paymentMutation = useMutation({
     mutationFn: async () => {
@@ -115,6 +117,8 @@ export const CheckoutPage: React.FC = () => {
       return verifyRes;
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['booking-checkout', bookingId] });
       refetch();
     },
     onError: (err: unknown) => {

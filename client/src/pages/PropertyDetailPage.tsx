@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, formatCurrency, messageForError } from '../lib/api';
 import { ResponsiveImage } from '../components/common/ResponsiveImage';
 import { useAuth } from '../features/auth/AuthContext';
@@ -115,6 +115,8 @@ export const PropertyDetailPage: React.FC = () => {
     enabled: canQuote && data?.property.status === 'ACTIVE',
   });
 
+  const queryClient = useQueryClient();
+
   // Booking hold mutation
   const createHoldMutation = useMutation({
     mutationFn: () =>
@@ -129,6 +131,7 @@ export const PropertyDetailPage: React.FC = () => {
         }),
       }),
     onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
       navigate(`/checkout/${res.booking.id}`);
     },
     onError: (err: unknown) => {

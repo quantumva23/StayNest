@@ -11,7 +11,7 @@ const footerLinks = {
   Account: [
     { label: 'Sign In', href: '/login' },
     { label: 'Create Account', href: '/register' },
-    { label: 'My Reservations', href: '/bookings' },
+    { label: 'My Reservations', href: '/account/bookings' },
   ],
   Support: [
     { label: 'Help Center', href: '/help' },
