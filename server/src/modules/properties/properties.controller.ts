@@ -121,6 +121,7 @@ export const getProperties = async (req: Request, res: Response, next: NextFunct
     const where: Prisma.PropertyWhereInput = {
       status: 'ACTIVE',
       hasActiveRooms: true,
+      city: { not: 'Demo Destination' },
       rooms: { some: rooms },
     };
 
@@ -130,6 +131,7 @@ export const getProperties = async (req: Request, res: Response, next: NextFunct
     if (city?.trim()) {
       const location = await prisma.city.findFirst({
         where: {
+          slug: { not: 'demo-destination' },
           OR: [
             { slug: city.trim().toLowerCase() },
             { name: { equals: city.trim(), mode: 'insensitive' } },
@@ -271,7 +273,11 @@ export const getProperties = async (req: Request, res: Response, next: NextFunct
 
 export const getCatalog = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const active = { status: 'ACTIVE' as const, hasActiveRooms: true };
+    const active = {
+      status: 'ACTIVE' as const,
+      hasActiveRooms: true,
+      city: { not: 'Demo Destination' },
+    };
     const [typeGroups, cityGroups, roomRows, cities] = await Promise.all([
       prisma.property.groupBy({
         by: ['type'],
@@ -287,7 +293,10 @@ export const getCatalog = async (req: Request, res: Response, next: NextFunction
         where: { isActive: true, property: active },
         select: { roomType: true, propertyId: true },
       }),
-      prisma.city.findMany({ orderBy: { name: 'asc' } }),
+      prisma.city.findMany({
+        where: { slug: { not: 'demo-destination' } },
+        orderBy: { name: 'asc' },
+      }),
     ]);
 
     const typeCount = new Map(typeGroups.map((group) => [group.type, group._count._all]));
@@ -327,6 +336,7 @@ export const getCatalog = async (req: Request, res: Response, next: NextFunction
 export const getCities = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const cities = await prisma.city.findMany({
+      where: { slug: { not: 'demo-destination' } },
       orderBy: { name: 'asc' },
       select: { id: true, name: true, slug: true, state: true, country: true },
     });
@@ -346,6 +356,7 @@ export const getPropertyById = async (req: Request, res: Response, next: NextFun
         images: { orderBy: { sortOrder: 'asc' } },
         rooms: {
           where: { isActive: true },
+          include: { images: true },
           orderBy: { pricePerNight: 'asc' },
         },
         amenities: { include: { amenity: true } },

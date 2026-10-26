@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth, User } from '../features/auth/AuthContext';
 import { apiFetch, fieldErrors, messageForError } from '../lib/api';
-import { Lock, Mail, ArrowRight, Sparkles, Home, Shield, User as UserIcon } from 'lucide-react';
+import { Lock, Mail, ArrowRight, Home } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -45,29 +45,6 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const handleQuickDemoLogin = async (demoEmail: string) => {
-    setEmail(demoEmail);
-    setPassword('password123');
-    setError(null);
-    setFields({});
-    setIsLoading(true);
-
-    try {
-      const data = await apiFetch<{ token: string; user: User }>('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ email: demoEmail, password: 'password123' }),
-      });
-
-      login(data.token, data.user);
-      navigate(destinationFor(data.user.role));
-    } catch (err: unknown) {
-      setFields(fieldErrors(err));
-      setError(messageForError(err));
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4 py-12">
       <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-[#E6E1D8] shadow-subtle space-y-8">
@@ -81,40 +58,6 @@ export const LoginPage: React.FC = () => {
           <p className="text-xs text-staynest-muted">
             Log in to manage reservations, listings, and your StayNest account.
           </p>
-        </div>
-
-        {/* 1-Click Demo Logins */}
-        <div className="space-y-2 p-3.5 rounded-2xl bg-[#FAFAF7] border border-[#E6E1D8]">
-          <div className="flex items-center space-x-1.5 text-[11px] font-bold uppercase tracking-wider text-staynest-muted">
-            <Sparkles className="w-3.5 h-3.5 text-staynest-terracotta" />
-            <span>Fast Demo Logins (Portfolio Mode)</span>
-          </div>
-          <div className="grid grid-cols-3 gap-2 pt-1">
-            <button
-              type="button"
-              onClick={() => handleQuickDemoLogin('guest@staynest.dev')}
-              className="py-1.5 px-2 rounded-xl bg-white border border-[#E6E1D8] text-[11px] font-semibold text-staynest-charcoal hover:border-staynest-charcoal transition-colors flex items-center justify-center space-x-1"
-            >
-              <UserIcon className="w-3 h-3 text-staynest-muted" />
-              <span>Guest</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickDemoLogin('host@staynest.dev')}
-              className="py-1.5 px-2 rounded-xl bg-white border border-[#E6E1D8] text-[11px] font-semibold text-staynest-olive hover:border-staynest-olive transition-colors flex items-center justify-center space-x-1"
-            >
-              <Home className="w-3 h-3 text-staynest-olive" />
-              <span>Host</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickDemoLogin('admin@staynest.dev')}
-              className="py-1.5 px-2 rounded-xl bg-white border border-[#E6E1D8] text-[11px] font-semibold text-purple-700 hover:border-purple-600 transition-colors flex items-center justify-center space-x-1"
-            >
-              <Shield className="w-3 h-3 text-purple-600" />
-              <span>Admin</span>
-            </button>
-          </div>
         </div>
 
         {error && Object.keys(fields).length === 0 && (

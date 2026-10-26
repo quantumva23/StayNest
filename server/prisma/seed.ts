@@ -30,50 +30,12 @@ async function main() {
     amenities.push(amenity);
   }
 
-  // 2. Create Demo Users (Guest, Host, Admin)
-  const defaultPasswordHash = hashPassword('password123');
+  // 2. Resolve Host User for Properties
+  const host = (await prisma.user.findFirst({ where: { role: 'HOST' } })) || (await prisma.user.findFirst());
+  if (!host) {
+    throw new Error('No host account found in database. Register a user first.');
+  }
 
-  const admin = await prisma.user.upsert({
-    where: { email: 'admin@staynest.dev' },
-    update: {},
-    create: {
-      email: 'admin@staynest.dev',
-      name: 'StayNest Admin',
-      passwordHash: defaultPasswordHash,
-      role: 'ADMIN',
-      isActive: true,
-    },
-  });
-
-  const host = await prisma.user.upsert({
-    where: { email: 'host@staynest.dev' },
-    update: {},
-    create: {
-      email: 'host@staynest.dev',
-      name: 'Aarav Singhania',
-      passwordHash: defaultPasswordHash,
-      role: 'HOST',
-      isActive: true,
-    },
-  });
-
-  const guest = await prisma.user.upsert({
-    where: { email: 'guest@staynest.dev' },
-    update: {},
-    create: {
-      email: 'guest@staynest.dev',
-      name: 'Rohan Sharma',
-      passwordHash: defaultPasswordHash,
-      role: 'GUEST',
-      isActive: true,
-    },
-  });
-
-  console.log('[Seed] Created demo users (password: password123):', {
-    admin: admin.email,
-    host: host.email,
-    guest: guest.email,
-  });
 
   const cityData = [
     { name: 'Udaipur', slug: 'udaipur', state: 'Rajasthan', country: 'India' },
@@ -81,6 +43,8 @@ async function main() {
     { name: 'Goa', slug: 'goa', state: 'Goa', country: 'India' },
     { name: 'Bangalore', slug: 'bangalore', state: 'Karnataka', country: 'India' },
     { name: 'Jaipur', slug: 'jaipur', state: 'Rajasthan', country: 'India' },
+    { name: 'Varanasi', slug: 'varanasi', state: 'Uttar Pradesh', country: 'India' },
+    { name: 'Nainital', slug: 'nainital', state: 'Uttarakhand', country: 'India' },
     { name: 'Kochi', slug: 'kochi', state: 'Kerala', country: 'India' },
     { name: 'Munnar', slug: 'munnar', state: 'Kerala', country: 'India' },
   ];

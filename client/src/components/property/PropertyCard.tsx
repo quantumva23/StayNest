@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { formatCurrency } from '../../lib/api';
 import { MapPin, Users } from 'lucide-react';
+import { ResponsiveImage } from '../common/ResponsiveImage';
 
 export interface PropertyCardData {
   id: string;
@@ -18,8 +19,6 @@ export interface PropertyCardData {
 }
 
 export const PropertyCard: React.FC<{ property: PropertyCardData }> = ({ property }) => {
-  const coverImage = property.images[0]?.imageUrl || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80';
-
   const typeLabels = {
     HOTEL: { label: 'Boutique Hotel', bg: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
     LOUNGE: { label: 'Alpine Lounge', bg: 'bg-amber-50 text-amber-800 border-amber-200' },
@@ -33,15 +32,17 @@ export const PropertyCard: React.FC<{ property: PropertyCardData }> = ({ propert
       to={`/properties/${property.id}`}
       className="group flex flex-col bg-white rounded-3xl overflow-hidden border border-[#E6E1D8] transition-all duration-300 hover:shadow-hover hover:-translate-y-1"
     >
-      {/* Image container */}
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-gray-100">
-        <img
-          src={coverImage}
+      {/* Image container with responsive aspect ratio and error fallback */}
+      <div className="relative aspect-[4/3] w-full overflow-hidden bg-[#F2ECE4]">
+        <ResponsiveImage
+          src={property.images[0]?.imageUrl}
           alt={property.images[0]?.altText || property.name}
-          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-          loading="lazy"
+          aspectRatioClass="aspect-[4/3]"
+          objectFit="cover"
+          objectPosition="object-center"
+          className="group-hover:scale-105 transition-transform duration-500"
         />
-        <div className="absolute top-3 left-3">
+        <div className="absolute top-3 left-3 z-20">
           <span className={`inline-block text-[11px] font-semibold tracking-wide uppercase px-2.5 py-1 rounded-full border backdrop-blur-sm ${badge.bg}`}>
             {badge.label}
           </span>

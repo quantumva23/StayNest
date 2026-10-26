@@ -21,6 +21,22 @@ export default defineConfig({
         target: 'http://localhost:4000',
         changeOrigin: true,
       },
+      '/photos': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+      },
+      '/uploads': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+      },
+      '/images': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+      },
+      '/roomsimages': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+      },
     },
   },
 });

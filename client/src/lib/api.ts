@@ -162,3 +162,22 @@ export function formatCurrency(amountInMinorUnits: number, currency = 'INR'): st
     maximumFractionDigits: 0,
   }).format(major);
 }
+
+export function resolveImageUrl(url?: string): string {
+  if (!url || typeof url !== 'string' || !url.trim()) {
+    return '/images/Sunset%20Aarti%20on%20the%20Sacred%20Ghat.png';
+  }
+  // Strip hardcoded localhost:4000 origin so requests flow through Vite proxy cleanly
+  const cleaned = url.replace(/^http:\/\/(localhost|127\.0\.0\.1):4000/, '').trim();
+  if (cleaned.startsWith('http://') || cleaned.startsWith('https://')) {
+    return cleaned;
+  }
+  const prefix = cleaned.startsWith('/') ? '' : '/';
+  const fullPath = `${prefix}${cleaned}`;
+  try {
+    return encodeURI(decodeURI(fullPath));
+  } catch {
+    return fullPath;
+  }
+}
+

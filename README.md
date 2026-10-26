@@ -66,17 +66,11 @@ Put stay photos in `photos/`. If the database has no listings, the next start bu
 
 ---
 
-## 🔑 Demo Accounts (Pre-seeded)
+## 🔑 User Authentication & Roles
 
-All accounts share the password: `password123`
-
-| Role | Email | Password | Access |
-| :--- | :--- | :--- | :--- |
-| **Guest** | `guest@staynest.dev` | `password123` | Search, reserve, pay sandbox, cancel |
-| **Host** | `host@staynest.dev` | `password123` | Host dashboard, create listings, view reservations |
-| **Admin** | `admin@staynest.dev` | `password123` | Moderate listings, activate/deactivate users, audit |
-
-*(Quick 1-click login buttons are also available on the `/login` screen)*
+Create custom accounts using the registration screen (`/register`) with either role:
+- **Guest**: Search, reserve rooms, complete checkout, view bookings, and submit reviews.
+- **Host**: Manage listings, create properties, add room categories, and review reservations.
 
 ---
 

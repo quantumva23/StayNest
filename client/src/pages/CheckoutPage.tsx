@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiFetch, formatCurrency, messageForError } from '../lib/api';
+import { ResponsiveImage } from '../components/common/ResponsiveImage';
 import {
   ShieldCheck,
   Clock,
@@ -244,11 +245,13 @@ export const CheckoutPage: React.FC = () => {
 
         {/* Property & Stay Summary */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
-          <div className="aspect-[4/3] rounded-2xl overflow-hidden bg-gray-100 border border-[#E6E1D8]">
-            <img
+          <div className="aspect-[4/3] rounded-2xl overflow-hidden bg-[#F2ECE4] border border-[#E6E1D8]">
+            <ResponsiveImage
               src={booking.room.property.images[0]?.imageUrl}
               alt={booking.room.property.name}
-              className="w-full h-full object-cover"
+              aspectRatioClass="aspect-[4/3]"
+              objectFit="cover"
+              objectPosition="object-center"
             />
           </div>
 

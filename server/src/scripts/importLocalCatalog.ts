@@ -105,12 +105,6 @@ const AMENITIES = [
   { name: 'Free Parking', iconKey: 'car' },
 ];
 
-const USERS: Array<{ email: string; name: string; role: Role }> = [
-  { email: 'admin@staynest.dev', name: 'StayNest Admin', role: 'ADMIN' },
-  { email: 'host@staynest.dev', name: 'Aarav Singhania', role: 'HOST' },
-  { email: 'guest@staynest.dev', name: 'Rohan Sharma', role: 'GUEST' },
-];
-
 const ROOM_PRICE: Record<RoomType, number> = {
   STANDARD: 280000,
   STUDIO: 360000,
@@ -212,22 +206,14 @@ function importTables() {
 }
 
 async function seedAccounts() {
-  const passwordHash = hashPassword('password123');
-  for (const user of USERS) {
-    await prisma.user.upsert({
-      where: { email: user.email },
-      update: {},
-      create: { ...user, passwordHash, isActive: true },
-    });
-  }
   for (const item of AMENITIES) {
     await prisma.amenity.upsert({ where: { name: item.name }, update: { iconKey: item.iconKey }, create: item });
   }
 }
 
 async function seedStays(assets: Asset[]) {
-  const host = await prisma.user.findUnique({ where: { email: 'host@staynest.dev' } });
-  if (!host) throw new Error('Host account was not created');
+  const host = await prisma.user.findFirst({ where: { role: 'HOST' } });
+  if (!host) throw new Error('No host account found. Please register a host account first.');
   const amenities = await prisma.amenity.findMany();
   const grouped = groupStayPhotos(assets);
   const counts: Record<string, number> = {};

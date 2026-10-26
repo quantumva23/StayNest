@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiFetch, formatCurrency, messageForError } from '../lib/api';
+import { ResponsiveImage } from '../components/common/ResponsiveImage';
 import { Calendar, MapPin, AlertCircle, CheckCircle2, Clock, XCircle, ArrowRight } from 'lucide-react';
 
 interface BookingItem {
@@ -131,11 +132,13 @@ export const BookingsPage: React.FC = () => {
                 className="bg-white rounded-3xl p-5 sm:p-6 border border-[#E6E1D8] shadow-subtle flex flex-col md:flex-row md:items-center justify-between gap-6 hover:border-gray-300 transition-colors"
               >
                 <div className="flex items-center space-x-5">
-                  <div className="w-24 h-24 rounded-2xl overflow-hidden bg-gray-100 shrink-0 border border-[#E6E1D8]">
-                    <img
+                  <div className="w-24 h-24 rounded-2xl overflow-hidden bg-[#F2ECE4] shrink-0 border border-[#E6E1D8]">
+                    <ResponsiveImage
                       src={booking.room.property.images[0]?.imageUrl}
                       alt={booking.room.property.name}
-                      className="w-full h-full object-cover"
+                      aspectRatioClass="aspect-square"
+                      objectFit="cover"
+                      objectPosition="object-center"
                     />
                   </div>
 

@@ -1,20 +1,38 @@
 -- CreateEnum
-CREATE TYPE "Role" AS ENUM ('GUEST', 'HOST', 'ADMIN');
+DO $$ BEGIN
+  CREATE TYPE "Role" AS ENUM ('GUEST', 'HOST', 'ADMIN');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "PropertyType" AS ENUM ('HOTEL', 'LOUNGE', 'GUEST_HOUSE');
+DO $$ BEGIN
+  CREATE TYPE "PropertyType" AS ENUM ('HOTEL', 'LOUNGE', 'GUEST_HOUSE');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "PropertyStatus" AS ENUM ('DRAFT', 'PENDING_APPROVAL', 'ACTIVE', 'REJECTED', 'INACTIVE');
+DO $$ BEGIN
+  CREATE TYPE "PropertyStatus" AS ENUM ('DRAFT', 'PENDING_APPROVAL', 'ACTIVE', 'REJECTED', 'INACTIVE');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "RoomType" AS ENUM ('STANDARD', 'DELUXE', 'SUITE', 'STUDIO', 'CABIN', 'FAMILY');
+DO $$ BEGIN
+  CREATE TYPE "RoomType" AS ENUM ('STANDARD', 'DELUXE', 'SUITE', 'STUDIO', 'CABIN', 'FAMILY');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "BookingStatus" AS ENUM ('PENDING_PAYMENT', 'CONFIRMED', 'CANCELLED', 'EXPIRED');
+DO $$ BEGIN
+  CREATE TYPE "BookingStatus" AS ENUM ('PENDING_PAYMENT', 'CONFIRMED', 'CANCELLED', 'EXPIRED');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "PaymentStatus" AS ENUM ('CREATED', 'PENDING', 'SUCCEEDED', 'FAILED', 'REFUNDED');
+DO $$ BEGIN
+  CREATE TYPE "PaymentStatus" AS ENUM ('CREATED', 'PENDING', 'SUCCEEDED', 'FAILED', 'REFUNDED');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateTable
 CREATE TABLE "users" (

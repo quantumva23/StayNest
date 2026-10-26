@@ -15,8 +15,12 @@ import hostRoutes from './modules/host/host.routes';
 import adminRoutes from './modules/admin/admin.routes';
 import amenitiesRoutes from './modules/amenities/amenities.routes';
 import citiesRoutes from './modules/cities/cities.routes';
+import path from 'path';
 import uploadsRoutes, { uploadDir } from './modules/uploads/uploads.routes';
+import reviewsRoutes from './modules/reviews/reviews.routes';
 import { photosDir } from './scripts/importLocalCatalog';
+
+export const imagesDir = path.resolve(__dirname, '../images');
 
 export const createApp = () => {
   const app = express();
@@ -48,15 +52,35 @@ export const createApp = () => {
 
   app.use(cookieParser());
 
-  app.use('/uploads', (_req, res, next) => {
+  const setCorp = (_req: express.Request, res: express.Response, next: express.NextFunction) => {
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     next();
-  }, express.static(uploadDir));
+  };
 
-  app.use('/catalog-photos', (_req, res, next) => {
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-    next();
-  }, express.static(photosDir()));
+  const serverUploadsDir = path.resolve(__dirname, '../uploads');
+  const rootUploadsDir = path.resolve(__dirname, '../../uploads');
+  const propertiesUploadsDir = path.resolve(serverUploadsDir, 'properties');
+  const rootPropertiesUploadsDir = path.resolve(rootUploadsDir, 'properties');
+  const photosDirectory = path.resolve(__dirname, '../../photos');
+  const serverRoomsImagesDir = path.resolve(__dirname, '../roomsimages');
+  const rootRoomsImagesDir = path.resolve(__dirname, '../../roomsimages');
+
+  app.use('/uploads', setCorp, express.static(serverUploadsDir));
+  app.use('/uploads', setCorp, express.static(rootUploadsDir));
+  app.use('/uploads/properties', setCorp, express.static(propertiesUploadsDir));
+  app.use('/uploads/properties', setCorp, express.static(rootPropertiesUploadsDir));
+
+  app.use('/images', setCorp, express.static(imagesDir));
+  app.use('/images', setCorp, express.static(propertiesUploadsDir));
+  app.use('/images', setCorp, express.static(rootPropertiesUploadsDir));
+
+  app.use('/photos', setCorp, express.static(propertiesUploadsDir));
+  app.use('/photos', setCorp, express.static(photosDirectory));
+  app.use('/catalog-photos', setCorp, express.static(propertiesUploadsDir));
+  app.use('/catalog-photos', setCorp, express.static(photosDirectory));
+
+  app.use('/roomsimages', setCorp, express.static(serverRoomsImagesDir));
+  app.use('/roomsimages', setCorp, express.static(rootRoomsImagesDir));
 
   // Health check endpoint
   app.get('/health', (req, res) => {
@@ -75,6 +99,7 @@ export const createApp = () => {
   apiRouter.use('/rooms', roomsRoutes);
   apiRouter.use('/bookings', bookingsRoutes);
   apiRouter.use('/payments', paymentsRoutes);
+  apiRouter.use('/reviews', reviewsRoutes);
   apiRouter.use('/host', hostRoutes);
   apiRouter.use('/admin', adminRoutes);
   apiRouter.use('/amenities', amenitiesRoutes);

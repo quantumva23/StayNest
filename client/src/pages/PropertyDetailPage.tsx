@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiFetch, formatCurrency, messageForError } from '../lib/api';
+import { ResponsiveImage } from '../components/common/ResponsiveImage';
 import { useAuth } from '../features/auth/AuthContext';
 import {
   MapPin,
@@ -9,7 +10,6 @@ import {
   Shield,
   Wifi,
   Coffee,
-  Sparkles,
   Calendar,
   CheckCircle2,
   Clock,
@@ -26,6 +26,7 @@ interface Room {
   pricePerNight: number;
   currency: string;
   totalUnits: number;
+  images?: Array<{ id: string; imageUrl: string }>;
 }
 
 interface PropertyDetail {
@@ -196,24 +197,30 @@ export const PropertyDetailPage: React.FC = () => {
         )}
       </div>
 
-      {/* Image Gallery */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 rounded-3xl overflow-hidden border border-[#E6E1D8] bg-gray-100 shadow-subtle">
+      {/* Image Gallery with Responsive Cover and Fallback */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 rounded-3xl overflow-hidden border border-[#E6E1D8] bg-[#F2ECE4] shadow-subtle">
         {property.images.length > 0 ? (
           <>
             <div className="md:col-span-3 aspect-[16/10] overflow-hidden">
-              <img
-                src={property.images[0].imageUrl}
-                alt={property.images[0].altText || property.name}
-                className="w-full h-full object-cover hover:scale-102 transition-transform duration-500"
+              <ResponsiveImage
+                src={property.images[0]?.imageUrl}
+                alt={property.images[0]?.altText || property.name}
+                aspectRatioClass="aspect-[16/10]"
+                objectFit="cover"
+                objectPosition="object-center"
+                className="hover:scale-102 transition-transform duration-500"
               />
             </div>
             <div className="hidden md:flex flex-col gap-4">
               {property.images.slice(1, 3).map((img) => (
                 <div key={img.id} className="h-full aspect-[4/3] overflow-hidden">
-                  <img
+                  <ResponsiveImage
                     src={img.imageUrl}
-                    alt={img.altText || ''}
-                    className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                    alt={img.altText || property.name}
+                    aspectRatioClass="aspect-[4/3]"
+                    objectFit="cover"
+                    objectPosition="object-center"
+                    className="hover:scale-105 transition-transform duration-300"
                   />
                 </div>
               ))}
@@ -271,7 +278,7 @@ export const PropertyDetailPage: React.FC = () => {
                   key={amenity.id}
                   className="flex items-center space-x-2.5 p-3 rounded-xl bg-white border border-[#E6E1D8] text-xs font-semibold text-staynest-charcoal"
                 >
-                  <Sparkles className="w-4 h-4 text-staynest-terracotta shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 text-staynest-olive shrink-0" />
                   <span>{amenity.name}</span>
                 </div>
               ))}
@@ -296,41 +303,54 @@ export const PropertyDetailPage: React.FC = () => {
                         : 'border-[#E6E1D8] bg-white hover:border-gray-400'
                     }`}
                   >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          <h4 className="font-bold text-sm text-staynest-charcoal">{room.name}</h4>
-                          {room.roomType && (
-                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-staynest-charcoal text-white font-medium uppercase tracking-wide">
-                              {room.roomType.replace('_', ' ')}
+                    <div className="flex flex-col sm:flex-row gap-4">
+                      {room.images && room.images.length > 0 && (
+                        <div className="w-full sm:w-32 aspect-[4/3] rounded-xl overflow-hidden shrink-0 bg-[#F2ECE4]">
+                          <ResponsiveImage
+                            src={room.images[0]?.imageUrl}
+                            alt={`${room.name} room`}
+                            aspectRatioClass="aspect-[4/3]"
+                            objectFit="cover"
+                            objectPosition="object-center"
+                          />
+                        </div>
+                      )}
+                      <div className="flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <h4 className="font-bold text-sm text-staynest-charcoal">{room.name}</h4>
+                            {room.roomType && (
+                              <span className="text-[11px] px-2 py-0.5 rounded-full bg-staynest-charcoal text-white font-medium uppercase tracking-wide">
+                                {room.roomType.replace('_', ' ')}
+                              </span>
+                            )}
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-staynest-sand text-staynest-olive font-medium">
+                              Up to {room.capacity} guests
                             </span>
+                          </div>
+                          {room.description && (
+                            <p className="text-xs text-staynest-muted mt-1 leading-normal">{room.description}</p>
                           )}
-                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-staynest-sand text-staynest-olive font-medium">
-                            Up to {room.capacity} guests
+                          <p className="text-[11px] text-staynest-muted mt-2">
+                            Pool Inventory: {room.totalUnits} available room{room.totalUnits > 1 ? 's' : ''}
+                          </p>
+                        </div>
+
+                        <div className="text-left sm:text-right shrink-0">
+                          <span className="text-base font-bold text-staynest-charcoal">
+                            {formatCurrency(room.pricePerNight, room.currency)}
+                          </span>
+                          <span className="text-xs text-staynest-muted block">/ night</span>
+                          <span
+                            className={`inline-block mt-2 text-xs font-semibold px-3 py-1 rounded-full ${
+                              isSelected
+                                ? 'bg-staynest-terracotta text-white'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            {isSelected ? 'Selected' : 'Select'}
                           </span>
                         </div>
-                        {room.description && (
-                          <p className="text-xs text-staynest-muted mt-1 leading-normal">{room.description}</p>
-                        )}
-                        <p className="text-[11px] text-staynest-muted mt-2">
-                          Pool Inventory: {room.totalUnits} available room{room.totalUnits > 1 ? 's' : ''}
-                        </p>
-                      </div>
-
-                      <div className="text-left sm:text-right shrink-0">
-                        <span className="text-base font-bold text-staynest-charcoal">
-                          {formatCurrency(room.pricePerNight, room.currency)}
-                        </span>
-                        <span className="text-xs text-staynest-muted block">/ night</span>
-                        <span
-                          className={`inline-block mt-2 text-xs font-semibold px-3 py-1 rounded-full ${
-                            isSelected
-                              ? 'bg-staynest-terracotta text-white'
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                          }`}
-                        >
-                          {isSelected ? 'Selected' : 'Select'}
-                        </span>
                       </div>
                     </div>
                   </div>

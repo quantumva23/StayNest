@@ -13,6 +13,9 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed.ts",
     "seed:catalog": "tsx src/scripts/importLocalCatalog.ts",
+    "import:images": "tsx src/scripts/importImages.ts",
+    "associate:photos": "tsx src/scripts/associatePhotos.ts",
+    "associate:rooms": "tsx src/scripts/associateRoomsImages.ts",
     "test": "vitest run"
   },
   "dependencies": {

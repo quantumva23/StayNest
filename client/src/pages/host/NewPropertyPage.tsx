@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, fieldErrors, messageForError, uploadImage } from '../../lib/api';
-import { Home, Sparkles, Plus, Image, Bed, ArrowRight, AlertCircle } from 'lucide-react';
+import { Home, ListChecks, Plus, Image, Bed, ArrowRight, AlertCircle } from 'lucide-react';
 
 interface Amenity {
   id: string;
@@ -273,7 +273,7 @@ export const NewPropertyPage: React.FC = () => {
         {/* Section 2: Amenities */}
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#E6E1D8] shadow-subtle space-y-4">
           <h2 className="font-serif text-2xl font-bold text-staynest-charcoal flex items-center space-x-2">
-            <Sparkles className="w-5 h-5 text-staynest-olive" />
+            <ListChecks className="w-5 h-5 text-staynest-olive" />
             <span>Select Available Amenities</span>
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

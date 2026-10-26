@@ -1,93 +1,124 @@
 import React from 'react';
-import { Home, Shield, Award, Sparkles } from 'lucide-react';
+import { Home } from 'lucide-react';
+
+const footerLinks = {
+  Explore: [
+    { label: 'All Stays', href: '/explore' },
+    { label: 'Boutique Hotels', href: '/explore?type=HOTEL' },
+    { label: 'Guest Houses', href: '/explore?type=GUEST_HOUSE' },
+    { label: 'Lounges', href: '/explore?type=LOUNGE' },
+  ],
+  Account: [
+    { label: 'Sign In', href: '/login' },
+    { label: 'Create Account', href: '/register' },
+    { label: 'My Reservations', href: '/bookings' },
+  ],
+  Support: [
+    { label: 'Help Center', href: '/help' },
+    { label: 'Contact Us', href: '/contact' },
+    { label: 'Privacy Policy', href: '/privacy' },
+    { label: 'Terms of Service', href: '/terms' },
+  ],
+};
+
+const linkClass =
+  'text-sm text-[#B8B5AC] transition-colors duration-200 hover:text-white focus-visible:outline-none focus-visible:underline';
 
 export const Footer: React.FC = () => {
   return (
-    <footer className="bg-[#1F2421] text-[#E6E1D8] pt-16 pb-12 border-t border-[#313A35]">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-10 pb-12 border-b border-[#313A35]">
-          {/* Brand info */}
-          <div className="md:col-span-1 space-y-4">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-lg bg-staynest-terracotta flex items-center justify-center text-white">
-                <Home className="w-4 h-4" />
-              </div>
-              <span className="font-serif text-xl font-bold tracking-tight text-white">
+    <footer className="border-t border-[#343A35] bg-[#1F2421] text-[#E6E1D8]">
+      <div className="mx-auto max-w-7xl px-5 pb-6 pt-14 sm:px-8 lg:px-10">
+        <div className="grid grid-cols-1 gap-10 border-b border-[#343A35] pb-10 sm:grid-cols-2 lg:grid-cols-5 lg:gap-12">
+          {/* Brand */}
+          <div className="space-y-4 lg:col-span-2">
+            <a
+              href="/"
+              aria-label="StayNest home"
+              className="inline-flex items-center gap-3 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C77D5B]"
+            >
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-staynest-terracotta text-white">
+                <Home className="h-5 w-5" aria-hidden="true" />
+              </span>
+
+              <span className="font-serif text-2xl font-semibold tracking-tight text-white">
                 StayNest
               </span>
-            </div>
-            <p className="text-xs text-[#A6A095] leading-relaxed">
-              Curated boutique hotels, tranquil alpine lounges, and authentic heritage guest houses. Transparent pricing and secure reservations.
+            </a>
+
+            <p className="max-w-sm text-sm leading-7 text-[#B8B5AC]">
+              Discover thoughtfully selected stays, from distinctive boutique
+              hotels to welcoming guest houses. Find a place that feels like
+              yours.
             </p>
-            <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-[#2B332E] text-[11px] text-[#A6A095]">
-              <Sparkles className="w-3.5 h-3.5 text-staynest-terracotta" />
-              <span>Full-Stack Portfolio Project</span>
-            </div>
+
+            <p className="text-xs tracking-wide text-[#827D73]">
+              Thoughtful stays. Memorable journeys.
+            </p>
           </div>
 
-          {/* Stays by Type */}
-          <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-white mb-4">
-              Explore Types
-            </h4>
-            <ul className="space-y-2.5 text-xs text-[#A6A095]">
-              <li><a href="/explore?type=HOTEL" className="hover:text-white transition-colors">Boutique & Heritage Hotels</a></li>
-              <li><a href="/explore?type=LOUNGE" className="hover:text-white transition-colors">Scenic Alpine & Forest Lounges</a></li>
-              <li><a href="/explore?type=GUEST_HOUSE" className="hover:text-white transition-colors">Coastal & Homestay Guest Houses</a></li>
+          {/* Explore */}
+          <nav aria-label="Explore stays">
+            <h2 className="mb-5 text-xs font-semibold uppercase tracking-[0.16em] text-white">
+              Explore
+            </h2>
+
+            <ul className="space-y-3">
+              {footerLinks.Explore.map((link) => (
+                <li key={link.href}>
+                  <a href={link.href} className={linkClass}>
+                    {link.label}
+                  </a>
+                </li>
+              ))}
             </ul>
-          </div>
+          </nav>
 
-          {/* Trust & Safety */}
-          <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-white mb-4">
-              Guarantees
-            </h4>
-            <ul className="space-y-2.5 text-xs text-[#A6A095]">
-              <li className="flex items-center space-x-2">
-                <Shield className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Zero Client-Trust Pricing</span>
-              </li>
-              <li className="flex items-center space-x-2">
-                <Award className="w-3.5 h-3.5 text-amber-400" />
-                <span>Serialized Inventory Locking</span>
-              </li>
-              <li className="flex items-center space-x-2">
-                <Shield className="w-3.5 h-3.5 text-sky-400" />
-                <span>Idempotent Verified Payments</span>
-              </li>
+          {/* Account */}
+          <nav aria-label="Account">
+            <h2 className="mb-5 text-xs font-semibold uppercase tracking-[0.16em] text-white">
+              Your Account
+            </h2>
+
+            <ul className="space-y-3">
+              {footerLinks.Account.map((link) => (
+                <li key={link.href}>
+                  <a href={link.href} className={linkClass}>
+                    {link.label}
+                  </a>
+                </li>
+              ))}
             </ul>
-          </div>
+          </nav>
 
-          {/* Quick Demo Credentials */}
-          <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-white mb-4">
-              Demo Access
-            </h4>
-            <div className="bg-[#2B332E] p-3 rounded-xl border border-[#3E4A42] space-y-2 text-xs">
-              <div>
-                <span className="text-[10px] uppercase font-bold text-staynest-terracotta block">Demo Guest:</span>
-                <code className="text-[11px] text-white">guest@staynest.dev / password123</code>
-              </div>
-              <div>
-                <span className="text-[10px] uppercase font-bold text-staynest-olive-light block">Demo Host:</span>
-                <code className="text-[11px] text-white">host@staynest.dev / password123</code>
-              </div>
-              <div>
-                <span className="text-[10px] uppercase font-bold text-purple-300 block">Demo Admin:</span>
-                <code className="text-[11px] text-white">admin@staynest.dev / password123</code>
-              </div>
-            </div>
-          </div>
+          {/* Support */}
+          <nav aria-label="Customer support">
+            <h2 className="mb-5 text-xs font-semibold uppercase tracking-[0.16em] text-white">
+              Information
+            </h2>
+
+            <ul className="space-y-3">
+              {footerLinks.Support.map((link) => (
+                <li key={link.href}>
+                  <a href={link.href} className={linkClass}>
+                    {link.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
         </div>
 
-        {/* Bottom copyright */}
-        <div className="pt-8 flex flex-col sm:flex-row items-center justify-between text-xs text-[#827D73]">
-          <p>© {new Date().getFullYear()} StayNest. Student portfolio demonstration. Not an active commercial booking portal.</p>
-          <div className="flex space-x-6 mt-4 sm:mt-0">
-            <span>Powered by React, Express & PostgreSQL</span>
-          </div>
+        {/* Bottom bar */}
+        <div className="flex flex-col gap-3 pt-6 text-xs text-[#827D73] sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            &copy; {new Date().getFullYear()} StayNest. All rights reserved.
+          </p>
+
+          <p>Made for better stays and memorable journeys.</p>
         </div>
       </div>
     </footer>
   );
 };
+
+export default Footer;

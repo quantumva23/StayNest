@@ -9,6 +9,7 @@ import {
   addPropertyRoom,
 } from './properties.controller';
 import { authenticate, requireRole } from '../../middleware/auth';
+import { createReview, getPropertyReviews } from '../reviews/reviews.controller';
 
 const router = Router();
 
@@ -16,6 +17,8 @@ const router = Router();
 router.get('/catalog', getCatalog);
 router.get('/', getProperties);
 router.get('/:propertyId', getPropertyById);
+router.get('/:propertyId/reviews', getPropertyReviews);
+router.post('/:propertyId/reviews', authenticate, createReview);
 
 // Host / Admin protected routes
 router.post('/', authenticate, requireRole(['HOST', 'ADMIN']), createProperty);
