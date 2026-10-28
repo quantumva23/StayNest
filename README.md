@@ -61,10 +61,10 @@
 git clone https://github.com/quantumva23/StayNest.git
 cd StayNest
 npm install
-npm start
+npm run start:local # Starts local Postgres via Docker + API + Frontend
 ```
 
-`npm start` starts Postgres, applies migrations, creates the demo accounts when they are missing, and runs the API (port 4000) and the site (port 5173). Open **[http://localhost:5173](http://localhost:5173)**.
+`npm run start:local` starts Postgres in Docker, applies migrations, and runs the API (port 4000) and the site (port 5173). In production (Render), `npm start` runs the Node.js API server directly. Open **[http://localhost:5173](http://localhost:5173)**.
 
 Put stay photos in `photos/`. If the database has no listings, the next start builds them from those files.
 
