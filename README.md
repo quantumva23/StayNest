@@ -1,5 +1,9 @@
 # StayNest — Full-Stack Accommodation Booking Platform
 
+[![StayNest CI/CD Pipeline](https://github.com/quantumva23/StayNest/actions/workflows/ci.yml/badge.svg)](https://github.com/quantumva23/StayNest/actions/workflows/ci.yml)
+[![Vercel Deployment](https://img.shields.io/badge/Vercel-Frontend-black?logo=vercel)](https://staynest.vercel.app)
+[![Render Deployment](https://img.shields.io/badge/Render-Backend%20API-46E3B7?logo=render)](https://render.com)
+
 > A modern, deployable accommodation booking platform inspired by Airbnb, tailored for boutique hotels, alpine lounges, and authentic heritage guest houses.
 
 ---
@@ -83,23 +87,71 @@ npm test
 
 ---
 
-## 🚢 Deployment
+## 🚢 Production Deployment & Continuous Integration (CI/CD)
 
-### 1. Database
-- Use the local Postgres database in `DATABASE_URL`.
-- Put stay photos in the repo `photos/` folder. On startup the API imports tables and, if the database has no stays, builds listings from those files.
+StayNest is configured for automated continuous deployment:
+- **Backend API**: Hosted on **Render** (via `render.yaml` Blueprint or Web Service) with managed PostgreSQL.
+- **Frontend SPA**: Hosted on **Vercel** with full SPA rewrite routing support (`vercel.json`).
+- **Continuous Integration (CI)**: Managed by **GitHub Actions** (`.github/workflows/ci.yml`). Every pull request or push to `main` executes client & server builds and Vitest test suites, generating live status reports.
 
-### 2. API Backend (Render / Railway)
-- Root Directory: `server`
-- Build Command: `npm install && npm run prisma:generate && npm run build`
-- Start Command: `npm run start`
-- Environment Variables: `DATABASE_URL`, `JWT_SECRET`, `FRONTEND_URL`, `NODE_ENV=production`.
+---
 
-### 3. Frontend (Vercel)
-- Root Directory: `client`
-- Build Command: `npm run build`
-- Output Directory: `dist`
-- Environment Variables: `VITE_API_URL=https://your-api-domain.com/api/v1`.
+### 1. Backend Deployment (Render)
+
+You can deploy the backend using Render's Blueprint (Infrastructure as Code) or as an individual Web Service:
+
+#### Option A: 1-Click Render Blueprint (Recommended)
+1. Go to [Render Dashboard](https://dashboard.render.com/) and click **New +** > **Blueprint**.
+2. Connect your GitHub repository: `https://github.com/quantumva23/StayNest`.
+3. Render automatically reads `render.yaml` and provisions:
+   - **staynest-db**: Managed PostgreSQL database.
+   - **staynest-api**: Node.js Web Service running the API.
+4. Set the `FRONTEND_URL` environment variable to your Vercel URL (e.g. `https://staynest.vercel.app`).
+5. Click **Apply**. Render will automatically run `npm run prisma:generate`, compile TypeScript, apply `prisma migrate deploy`, and start the service with a `/health` probe.
+
+#### Option B: Manual Web Service
+- **Root Directory**: `server`
+- **Build Command**: `npm install && npx prisma generate && npm run build`
+- **Start Command**: `npx prisma migrate deploy && npm run start`
+- **Health Check Path**: `/health`
+- **Environment Variables**:
+  | Variable | Value / Description |
+  | :--- | :--- |
+  | `NODE_ENV` | `production` |
+  | `PORT` | `10000` (Render default) |
+  | `DATABASE_URL` | Your PostgreSQL connection URI (Render Postgres / Neon / Supabase) |
+  | `FRONTEND_URL` | Your Vercel frontend URL (e.g. `https://staynest.vercel.app`) |
+  | `JWT_SECRET` | 32+ character random string |
+  | `PAYMENT_PROVIDER` | `sandbox_mock` (or `razorpay`) |
+
+---
+
+### 2. Frontend Deployment (Vercel)
+
+1. Go to [Vercel Dashboard](https://vercel.com/) and click **Add New...** > **Project**.
+2. Import the `StayNest` GitHub repository.
+3. Configure Project Settings:
+   - **Framework Preset**: Vite
+   - **Root Directory**: Set to `client` (or leave as root; `vercel.json` supports both)
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `dist`
+4. Add Environment Variables:
+   | Variable | Value |
+   | :--- | :--- |
+   | `VITE_API_URL` | `https://your-render-service.onrender.com/api/v1` |
+   | `VITE_RAZORPAY_KEY_ID` | `rzp_test_placeholder_key` |
+5. Click **Deploy**. Vercel will build and launch your application with automatic SSL and global CDN distribution.
+
+---
+
+### 3. Continuous Integration & Visible Pipeline Updates
+
+- **Automatic Previews on Pull Requests**: Every PR automatically triggers the GitHub Actions pipeline (`server-ci` and `client-ci`) and creates a Vercel preview deployment.
+- **Continuous Deployment on `main`**: Pushes to `main` trigger:
+  1. Frontend build verification & automatic Vercel production deployment.
+  2. Backend Vitest suite execution & automatic Render deploy.
+  3. GitHub Actions Step Summary documenting the commit, build statuses, and deployment health.
+- *(Optional)* Add `RENDER_DEPLOY_HOOK_URL` in **GitHub Repository Secrets** to trigger immediate Render deployments directly from the GitHub Actions workflow.
 
 ---
 

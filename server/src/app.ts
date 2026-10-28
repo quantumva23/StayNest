@@ -31,9 +31,34 @@ export const createApp = () => {
   app.use(helmet());
 
   // CORS configuration
+  const allowedOrigins = [
+    env.FRONTEND_URL,
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:3000',
+    'http://localhost:4173',
+  ]
+    .flatMap((url) => (url ? url.split(',') : []))
+    .map((url) => url.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+
   app.use(
     cors({
-      origin: [env.FRONTEND_URL, 'http://localhost:5173', 'http://127.0.0.1:5173'],
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+
+        const normalizedOrigin = origin.replace(/\/+$/, '');
+        if (allowedOrigins.includes(normalizedOrigin)) {
+          return callback(null, true);
+        }
+
+        // Allow preview deployments and production domains on Vercel
+        if (/^https:\/\/.*\.vercel\.app$/.test(normalizedOrigin)) {
+          return callback(null, true);
+        }
+
+        callback(null, false);
+      },
       credentials: true,
       methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],

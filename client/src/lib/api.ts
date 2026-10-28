@@ -165,15 +165,27 @@ export function formatCurrency(amountInMinorUnits: number, currency = 'INR'): st
 
 export function resolveImageUrl(url?: string): string {
   if (!url || typeof url !== 'string' || !url.trim()) {
-    return '/images/Sunset%20Aarti%20on%20the%20Sacred%20Ghat.png';
+    url = '/images/Sunset%20Aarti%20on%20the%20Sacred%20Ghat.png';
   }
-  // Strip hardcoded localhost:4000 origin so requests flow through Vite proxy cleanly
+  // Strip hardcoded localhost:4000 origin so requests flow cleanly
   const cleaned = url.replace(/^http:\/\/(localhost|127\.0\.0\.1):4000/, '').trim();
   if (cleaned.startsWith('http://') || cleaned.startsWith('https://')) {
     return cleaned;
   }
   const prefix = cleaned.startsWith('/') ? '' : '/';
   const fullPath = `${prefix}${cleaned}`;
+
+  // If in production and API_BASE_URL is pointing to a remote backend (e.g. Render),
+  // prefix backend origin for server-served media paths (/images, /uploads, /photos, /roomsimages, /catalog-photos)
+  if (API_BASE_URL.startsWith('http://') || API_BASE_URL.startsWith('https://')) {
+    try {
+      const backendOrigin = new URL(API_BASE_URL).origin;
+      return `${backendOrigin}${encodeURI(decodeURI(fullPath))}`;
+    } catch {
+      // Fallback to relative path
+    }
+  }
+
   try {
     return encodeURI(decodeURI(fullPath));
   } catch {

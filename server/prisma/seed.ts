@@ -30,10 +30,45 @@ async function main() {
     amenities.push(amenity);
   }
 
-  // 2. Resolve Host User for Properties
-  const host = (await prisma.user.findFirst({ where: { role: 'HOST' } })) || (await prisma.user.findFirst());
+  // 2. Resolve or Create Demo Host, Guest, and Admin Users
+  let host = (await prisma.user.findFirst({ where: { role: 'HOST' } })) || (await prisma.user.findFirst());
   if (!host) {
-    throw new Error('No host account found in database. Register a user first.');
+    console.log('[Seed] Creating demo host, guest, and admin users...');
+    host = await prisma.user.upsert({
+      where: { email: 'host@staynest.com' },
+      update: {},
+      create: {
+        email: 'host@staynest.com',
+        name: 'Aarav Mehta (Demo Host)',
+        passwordHash: hashPassword('HostPassword123!'),
+        role: 'HOST',
+        isActive: true,
+      },
+    });
+
+    await prisma.user.upsert({
+      where: { email: 'guest@staynest.com' },
+      update: {},
+      create: {
+        email: 'guest@staynest.com',
+        name: 'Priya Sharma (Demo Guest)',
+        passwordHash: hashPassword('GuestPassword123!'),
+        role: 'GUEST',
+        isActive: true,
+      },
+    });
+
+    await prisma.user.upsert({
+      where: { email: 'admin@staynest.com' },
+      update: {},
+      create: {
+        email: 'admin@staynest.com',
+        name: 'StayNest Admin',
+        passwordHash: hashPassword('AdminPassword123!'),
+        role: 'ADMIN',
+        isActive: true,
+      },
+    });
   }
 
 
